@@ -31,6 +31,7 @@ This production system automatically:
 ```
 
 ### Core Components:
+
 - **🌩️ Azure Functions**: Serverless compute with 1-minute timer trigger
 - **📱 Microsoft Graph API**: Personal email and OneDrive access with Mail.ReadWrite
 - **🎤 Azure Speech Services**: Continuous speech recognition with mu-law support

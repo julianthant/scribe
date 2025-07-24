@@ -1,6 +1,7 @@
 # 🎯 API Reference
 
 ## 📋 Table of Contents
+
 - [Azure Functions Core](#azure-functions-core)
 - [Microsoft Graph API](#microsoft-graph-api)
 - [Azure Speech Services](#azure-speech-services)
@@ -14,88 +15,109 @@
 #### Main Methods
 
 ##### `process_emails(mytimer: func.TimerRequest)`
+
 **Description**: Timer-triggered function that processes voice emails every minute.
 
 **Parameters**:
+
 - `mytimer` (func.TimerRequest): Azure Functions timer request object
 
 **Returns**: None (logs results)
 
 **Example Usage**:
+
 ```python
 # Automatically triggered by Azure Functions runtime
 # Schedule: Every minute (0 */1 * * * *)
 ```
 
 ##### `_get_access_token_from_keyvault()`
+
 **Description**: Retrieves and refreshes Microsoft Graph access tokens from Azure Key Vault.
 
-**Returns**: 
+**Returns**:
+
 - `str`: Valid access token
 - `None`: If token retrieval/refresh fails
 
 **Exception Handling**:
+
 - Logs token refresh attempts
 - Handles expired tokens automatically
 - Falls back to refresh token if access token expired
 
 ##### `_get_voice_messages(access_token: str)`
+
 **Description**: Retrieves unread emails with voice message attachments.
 
 **Parameters**:
+
 - `access_token` (str): Valid Microsoft Graph access token
 
 **Returns**:
+
 - `list`: Array of email objects with voice attachments
 - `[]`: Empty array if no voice messages found
 
 **API Call**:
+
 ```http
 GET https://graph.microsoft.com/v1.0/me/messages
 ```
 
 **Filter Criteria**:
+
 - `isRead eq false`: Unread emails only
 - `hasAttachments eq true`: Must have attachments
 - Attachment filename contains audio extensions
 
 ##### `_download_attachment_to_blob(email_id: str, attachment_id: str, access_token: str)`
+
 **Description**: Downloads email attachment and stores in Azure Blob Storage.
 
 **Parameters**:
+
 - `email_id` (str): Microsoft Graph email ID
 - `attachment_id` (str): Microsoft Graph attachment ID
 - `access_token` (str): Valid access token
 
 **Returns**:
+
 - `str`: Blob URL if successful
 - `None`: If download fails
 
 **Storage Details**:
+
 - Container: `audio-files`
 - Blob name: `{email_id}_{attachment_id}.wav`
 - Temporary storage (deleted after processing)
 
 ##### `_transcribe_audio(blob_url: str)`
+
 **Description**: Transcribes audio using Azure Speech Services with continuous recognition.
 
 **Parameters**:
+
 - `blob_url` (str): Azure Blob Storage URL
 
 **Returns**:
+
 - `str`: Complete transcription text
 - `None`: If transcription fails
 
 **Technical Details**:
+
 - **Audio Conversion**: Mu-law to PCM (8kHz → 16kHz)
 - **Recognition Type**: Continuous (captures full audio)
 - **Language**: en-US with dictation enabled
 - **Timeout**: 5 minutes maximum
 
 ##### `_update_excel_file(from_email: str, subject: str, transcription: str, access_token: str)`
+
 **Description**: Appends transcription results to Excel file on OneDrive.
 
 **Parameters**:
+
 - `from_email` (str): Sender's email address
 - `subject` (str): Email subject line
 - `transcription` (str): Audio transcription text
@@ -110,16 +132,20 @@ GET https://graph.microsoft.com/v1.0/me/messages
 | D | Transcription | `Hello, this is a test...` |
 
 ##### `_move_email_to_processed_folder(email_id: str, access_token: str)`
+
 **Description**: Moves processed email to "Voice Messages Processed" folder.
 
 **Parameters**:
+
 - `email_id` (str): Microsoft Graph email ID
 - `access_token` (str): Valid access token
 
 **Returns**:
+
 - `bool`: True if successful, False otherwise
 
 **Folder Management**:
+
 - Creates folder if it doesn't exist
 - Requires `Mail.ReadWrite` permission
 - Prevents duplicate processing
@@ -129,6 +155,7 @@ GET https://graph.microsoft.com/v1.0/me/messages
 ### Authentication
 
 #### OAuth 2.0 Flow
+
 ```python
 # Required scopes
 scopes = [
@@ -140,6 +167,7 @@ scopes = [
 ```
 
 #### Token Management
+
 ```python
 # Access token (1 hour expiry)
 headers = {
@@ -158,11 +186,13 @@ refresh_data = {
 ### Email Operations
 
 #### Get Unread Voice Messages
+
 ```http
 GET /v1.0/me/messages?$filter=isRead eq false and hasAttachments eq true&$select=id,subject,from,attachments&$expand=attachments
 ```
 
 **Response**:
+
 ```json
 {
   "value": [
@@ -187,6 +217,7 @@ GET /v1.0/me/messages?$filter=isRead eq false and hasAttachments eq true&$select
 ```
 
 #### Download Attachment
+
 ```http
 GET /v1.0/me/messages/{email-id}/attachments/{attachment-id}/$value
 ```
@@ -194,6 +225,7 @@ GET /v1.0/me/messages/{email-id}/attachments/{attachment-id}/$value
 **Response**: Binary audio data
 
 #### Move Email to Folder
+
 ```http
 POST /v1.0/me/messages/{email-id}/move
 Content-Type: application/json
@@ -206,11 +238,13 @@ Content-Type: application/json
 ### OneDrive Operations
 
 #### Get Excel File
+
 ```http
 GET /v1.0/me/drive/root:/{filename}.xlsx:/workbook/worksheets('Sheet1')/usedRange
 ```
 
 #### Append to Excel
+
 ```http
 POST /v1.0/me/drive/root:/{filename}.xlsx:/workbook/worksheets('Sheet1')/range(address='A{row}:D{row}')
 Content-Type: application/json
@@ -225,6 +259,7 @@ Content-Type: application/json
 ## 🎤 Azure Speech Services
 
 ### Speech Configuration
+
 ```python
 import azure.cognitiveservices.speech as speechsdk
 
@@ -237,6 +272,7 @@ speech_config.enable_dictation()
 ```
 
 ### Audio Configuration
+
 ```python
 # For continuous recognition
 audio_config = speechsdk.audio.AudioConfig(filename=audio_file_path)
@@ -249,6 +285,7 @@ speech_recognizer = speechsdk.SpeechRecognizer(
 ```
 
 ### Recognition Events
+
 ```python
 def handle_recognized(evt):
     """Handle recognized speech segments"""
@@ -265,6 +302,7 @@ speech_recognizer.session_stopped.connect(handle_session_stopped)
 ```
 
 ### Audio Format Conversion
+
 ```python
 import audioop
 import wave
@@ -274,18 +312,19 @@ def convert_mulaw_to_pcm(mulaw_data):
     """Convert mu-law audio to PCM format"""
     # Decode mu-law to linear PCM
     linear_data = audioop.ulaw2lin(mulaw_data, 2)
-    
+
     # Resample from 8kHz to 16kHz
     resampled_data = audioop.ratecv(
         linear_data, 2, 1, 8000, 16000, None
     )[0]
-    
+
     return resampled_data
 ```
 
 ## 💾 Azure Storage
 
 ### Blob Service Client
+
 ```python
 from azure.storage.blob import BlobServiceClient
 
@@ -302,6 +341,7 @@ blob_client.upload_blob(audio_data, overwrite=True)
 ```
 
 ### Blob Operations
+
 ```python
 # Download blob
 blob_data = blob_client.download_blob().readall()
@@ -316,6 +356,7 @@ blob_url = blob_client.url
 ## 🔐 Azure Key Vault
 
 ### Key Vault Client
+
 ```python
 from azure.keyvault.secrets import SecretClient
 from azure.identity import DefaultAzureCredential
@@ -328,6 +369,7 @@ client = SecretClient(
 ```
 
 ### Secret Operations
+
 ```python
 # Get secret
 secret = client.get_secret("secret-name")
@@ -345,28 +387,32 @@ secrets = client.list_properties_of_secrets()
 ### Common Error Codes
 
 #### Microsoft Graph API
-| Error Code | Description | Solution |
-|------------|-------------|----------|
-| 401 | Unauthorized | Refresh access token |
-| 403 | Forbidden | Check API permissions |
-| 404 | Not Found | Verify resource exists |
-| 429 | Too Many Requests | Implement retry logic |
+
+| Error Code | Description       | Solution               |
+| ---------- | ----------------- | ---------------------- |
+| 401        | Unauthorized      | Refresh access token   |
+| 403        | Forbidden         | Check API permissions  |
+| 404        | Not Found         | Verify resource exists |
+| 429        | Too Many Requests | Implement retry logic  |
 
 #### Azure Speech Services
-| Error Code | Description | Solution |
-|------------|-------------|----------|
-| 400 | Bad Request | Check audio format |
-| 401 | Unauthorized | Verify Speech Service key |
-| 415 | Unsupported Media Type | Convert audio format |
+
+| Error Code | Description            | Solution                  |
+| ---------- | ---------------------- | ------------------------- |
+| 400        | Bad Request            | Check audio format        |
+| 401        | Unauthorized           | Verify Speech Service key |
+| 415        | Unsupported Media Type | Convert audio format      |
 
 #### Azure Storage
-| Error Code | Description | Solution |
-|------------|-------------|----------|
-| 404 | Blob Not Found | Check blob name/container |
-| 409 | Conflict | Handle concurrent access |
-| 403 | Forbidden | Check storage permissions |
+
+| Error Code | Description    | Solution                  |
+| ---------- | -------------- | ------------------------- |
+| 404        | Blob Not Found | Check blob name/container |
+| 409        | Conflict       | Handle concurrent access  |
+| 403        | Forbidden      | Check storage permissions |
 
 ### Exception Handling Pattern
+
 ```python
 try:
     # API operation

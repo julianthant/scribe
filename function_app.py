@@ -424,279 +424,245 @@ class EmailVoiceProcessorWithKeyVault:
     def _transcribe_audio(self, blob_url):
         """Transcribe audio using Azure Speech Services with proper mu-law handling"""
         try:
-            # Extract blob name from URL and decode it properly
-            from urllib.parse import unquote
-            blob_name = unquote(blob_url.split('/')[-1])
+            # Download audio from blob
+            audio_data, original_path = self._download_audio_from_blob(blob_url)
             
-            logging.info(f"Downloading blob: {blob_name}")
-            
-            blob_client_obj = self.blob_client.get_blob_client(container="voice-files", blob=blob_name)
-            audio_data = blob_client_obj.download_blob().readall()
-            
-            logging.info(f"Downloaded audio file: {len(audio_data)} bytes")
-            
-            # Save original audio to temp file
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.original') as temp_original:
-                temp_original.write(audio_data)
-                original_path = temp_original.name
-            
-            converted_path = None
-            
-            # Try Python-based mu-law conversion
-            try:
-                logging.info("Attempting Python-based mu-law to PCM conversion...")
-                converted_path = original_path + '_python.wav'
-                
-                # Parse WAV file and extract mu-law audio data
-                if audio_data.startswith(b'RIFF') and b'WAVE' in audio_data[:12]:
-                    data_pos = audio_data.find(b'data')
-                    if data_pos != -1:
-                        # Get audio data size and content
-                        size_bytes = audio_data[data_pos + 4:data_pos + 8]
-                        audio_size = struct.unpack('<I', size_bytes)[0]
-                        audio_data_start = data_pos + 8
-                        raw_audio = audio_data[audio_data_start:audio_data_start + audio_size]
-                        
-                        logging.info(f"Found {len(raw_audio)} bytes of mu-law audio data")
-                        
-                        # Convert mu-law to linear PCM
-                        linear_frames = audioop.ulaw2lin(raw_audio, 2)
-                        
-                        # Resample from 8kHz to 16kHz for Azure Speech
-                        resampled_frames = audioop.ratecv(linear_frames, 2, 1, 8000, 16000, None)[0]
-                        
-                        # Create proper PCM WAV file
-                        with wave.open(converted_path, 'wb') as out_wav:
-                            out_wav.setnchannels(1)  # Mono
-                            out_wav.setsampwidth(2)  # 16-bit
-                            out_wav.setframerate(16000)  # 16kHz for Azure Speech
-                            out_wav.writeframes(resampled_frames)
-                        
-                        # Verify conversion
-                        if os.path.exists(converted_path) and os.path.getsize(converted_path) > 1000:
-                            probe_cmd = ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', converted_path]
-                            probe_result = subprocess.run(probe_cmd, capture_output=True, text=True)
-                            if probe_result.returncode == 0:
-                                probe_data = json.loads(probe_result.stdout)
-                                duration = float(probe_data.get('format', {}).get('duration', 0))
-                                if duration > 1.0:
-                                    logging.info(f"Python conversion successful! Duration: {duration:.2f}s")
-                                else:
-                                    logging.warning(f"Converted audio too short: {duration:.3f}s")
-                                    converted_path = None
-                            else:
-                                converted_path = None
-                        else:
-                            converted_path = None
-                    else:
-                        logging.error("Could not find 'data' chunk in WAV file")
-                        converted_path = None
-                else:
-                    logging.error("Not a valid RIFF WAV file")
-                    converted_path = None
-                    
-            except Exception as e:
-                logging.error(f"Python conversion failed: {e}")
-                converted_path = None
-            
-            # If Python conversion failed, try FFmpeg as fallback
+            # Convert audio to suitable format
+            converted_path = self._convert_audio_for_speech_service(audio_data, original_path)
             if not converted_path:
-                logging.info("Trying FFmpeg conversion as fallback...")
-                try:
-                    converted_path = original_path + '_ffmpeg.wav'
-                    ffmpeg_cmd = [
-                        'ffmpeg', '-y', '-i', original_path,
-                        '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', '-f', 'wav',
-                        converted_path
-                    ]
-                    
-                    result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
-                    if result.returncode != 0 or not os.path.exists(converted_path) or os.path.getsize(converted_path) < 1000:
-                        logging.error(f"FFmpeg conversion failed: {result.stderr}")
-                        converted_path = None
-                except Exception as e:
-                    logging.error(f"FFmpeg conversion error: {e}")
-                    converted_path = None
-            
-            # If all conversions failed, return error
-            if not converted_path:
-                logging.warning("All audio conversion strategies failed")
                 return "[Audio format not supported - conversion failed. File saved for manual review.]"
             
-            # Configure speech service for transcription
-            speech_config = SpeechConfig(
-                subscription=self.speech_key, 
-                region=self.speech_region
-            )
-            speech_config.speech_recognition_language = "en-US"
+            # Perform speech recognition
+            transcription = self._perform_speech_recognition(converted_path)
             
-            # Try transcription with the converted file using continuous recognition
-            try:
-                logging.info("Starting continuous speech recognition...")
-                audio_input = AudioConfig(filename=converted_path)
-                speech_recognizer = SpeechRecognizer(
-                    speech_config=speech_config, 
-                    audio_config=audio_input
-                )
-                
-                # Use continuous recognition for longer audio files
-                all_text = []
-                recognition_done = False
-                
-                def recognized_cb(evt):
-                    if evt.result.text:
-                        logging.info(f"Recognized: {evt.result.text}")
-                        all_text.append(evt.result.text)
-                
-                def session_stopped_cb(evt):
-                    nonlocal recognition_done
-                    logging.info("Session stopped")
-                    recognition_done = True
-                
-                def canceled_cb(evt):
-                    nonlocal recognition_done
-                    logging.info(f"Recognition canceled: {evt.reason}")
-                    recognition_done = True
-                
-                # Connect callbacks
-                speech_recognizer.recognized.connect(recognized_cb)
-                speech_recognizer.session_stopped.connect(session_stopped_cb)
-                speech_recognizer.canceled.connect(canceled_cb)
-                
-                # Start continuous recognition
-                speech_recognizer.start_continuous_recognition()
-                
-                # Wait for recognition to complete (with timeout)
-                import time
-                timeout = 60  # 60 seconds timeout
-                start_time = time.time()
-                
-                while not recognition_done and (time.time() - start_time) < timeout:
-                    time.sleep(0.1)
-                
-                speech_recognizer.stop_continuous_recognition()
-                
-                # Combine all recognized text
-                if all_text:
-                    transcription = " ".join(all_text)
-                    logging.info(f"Continuous transcription successful: {len(transcription)} characters")
-                else:
-                    # Fallback to single recognition if continuous failed
-                    logging.info("Continuous recognition got no results, trying single recognition...")
-                    result = speech_recognizer.recognize_once()
-                    
-                    if result.reason.name == 'RecognizedSpeech':
-                        transcription = result.text
-                        logging.info(f"Single recognition successful: {len(transcription)} characters")
-                    else:
-                        transcription = "[No speech detected in audio file]"
-                        logging.warning(f"Single recognition also failed: {result.reason}")
-                    
-            except Exception as e:
-                logging.error(f"Speech recognition error: {e}")
-                transcription = f"[Recognition error: {str(e)}]"
-            
-            # Cleanup temp files
-            try:
-                if os.path.exists(original_path):
-                    os.unlink(original_path)
-                if converted_path and os.path.exists(converted_path):
-                    os.unlink(converted_path)
-            except Exception as cleanup_e:
-                logging.warning(f"Cleanup error: {cleanup_e}")
+            # Cleanup temporary files
+            self._cleanup_temp_files(original_path, converted_path)
             
             return transcription
                 
         except Exception as e:
             logging.error(f"Error in transcription: {str(e)}")
             return f"[Error: {str(e)}]"
+
+    def _download_audio_from_blob(self, blob_url):
+        """Download audio data from blob storage"""
+        from urllib.parse import unquote
+        blob_name = unquote(blob_url.split('/')[-1])
+        
+        logging.info(f"Downloading blob: {blob_name}")
+        
+        blob_client_obj = self.blob_client.get_blob_client(container="voice-files", blob=blob_name)
+        audio_data = blob_client_obj.download_blob().readall()
+        
+        logging.info(f"Downloaded audio file: {len(audio_data)} bytes")
+        
+        # Save original audio to temp file
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.original') as temp_original:
+            temp_original.write(audio_data)
+            original_path = temp_original.name
+        
+        return audio_data, original_path
+
+    def _convert_audio_for_speech_service(self, audio_data, original_path):
+        """Convert audio to format suitable for Azure Speech Service"""
+        # Try Python-based mu-law conversion first
+        converted_path = self._try_python_mulaw_conversion(audio_data, original_path)
+        
+        # If Python conversion failed, try FFmpeg as fallback
+        if not converted_path:
+            converted_path = self._try_ffmpeg_conversion(original_path)
+        
+        return converted_path
+
+    def _try_python_mulaw_conversion(self, audio_data, original_path):
+        """Try Python-based mu-law to PCM conversion"""
+        try:
+            logging.info("Attempting Python-based mu-law to PCM conversion...")
+            converted_path = original_path + '_python.wav'
             
-            # Configure speech service with more robust settings
-            speech_config = SpeechConfig(
-                subscription=self.speech_key, 
-                region=self.speech_region
-            )
+            if not self._is_valid_riff_wav(audio_data):
+                logging.error("Not a valid RIFF WAV file")
+                return None
             
-            # Try multiple language configurations
-            languages_to_try = ["en-US", "en-GB", "en-AU", "en-CA"]
+            raw_audio = self._extract_audio_data_from_wav(audio_data)
+            if not raw_audio:
+                return None
             
-            for language in languages_to_try:
-                try:
-                    logging.info(f"Trying speech recognition with language: {language}")
-                    speech_config.speech_recognition_language = language
-                    
-                    # Enable profanity filter and other options
-                    speech_config.enable_audio_logging = True
-                    speech_config.request_word_level_timestamps = True
-                    
-                    audio_input = AudioConfig(filename=converted_path)
-                    speech_recognizer = SpeechRecognizer(
-                        speech_config=speech_config, 
-                        audio_config=audio_input
-                    )
-                    
-                    result = speech_recognizer.recognize_once()
-                    
-                    if result.reason.name == 'RecognizedSpeech' and result.text.strip():
-                        logging.info(f"Transcription successful with {language}: {len(result.text)} characters")
-                        break
-                    elif result.reason.name == 'NoMatch':
-                        logging.info(f"No speech recognized with {language}")
-                        continue
-                    else:
-                        logging.warning(f"Recognition failed with {language}: {result.reason}")
-                        continue
-                        
-                except Exception as lang_e:
-                    logging.error(f"Error with language {language}: {lang_e}")
-                    continue
+            self._create_pcm_wav_file(raw_audio, converted_path)
             
-            # If direct file approach failed, try stream-based approach with best language
-            if not (hasattr(result, 'reason') and result.reason.name == 'RecognizedSpeech' and result.text.strip()):
-                try:
-                    logging.info("Trying stream-based recognition as fallback...")
-                    with open(converted_path, 'rb') as audio_file:
-                        audio_data = audio_file.read()
+            if self._verify_conversion(converted_path):
+                return converted_path
+            
+            return None
                     
-                    import azure.cognitiveservices.speech as speechsdk
-                    stream = speechsdk.audio.PushAudioInputStream()
-                    audio_config = speechsdk.audio.AudioConfig(stream=stream)
-                    
-                    # Reset to English for stream approach
-                    speech_config.speech_recognition_language = "en-US"
-                    speech_recognizer = speechsdk.SpeechRecognizer(
-                        speech_config=speech_config, 
-                        audio_config=audio_config
-                    )
-                    
-                    stream.write(audio_data)
-                    stream.close()
-                    
-                    result = speech_recognizer.recognize_once()
-                    
-                except Exception as stream_e:
-                    logging.error(f"Stream-based recognition also failed: {stream_e}")
-                    # If we still have no result, create a placeholder
-                    if not hasattr(result, 'reason'):
-                        result = type('obj', (object,), {
-                            'reason': type('obj', (object,), {'name': 'Error'}),
-                            'text': f"[Audio format not supported: {'; '.join(conversion_attempts[:2])}]"
-                        })            # Cleanup temp files
+        except Exception as e:
+            logging.error(f"Python conversion failed: {e}")
+            return None
+
+    def _is_valid_riff_wav(self, audio_data):
+        """Check if audio data is a valid RIFF WAV file"""
+        return audio_data.startswith(b'RIFF') and b'WAVE' in audio_data[:12]
+
+    def _extract_audio_data_from_wav(self, audio_data):
+        """Extract raw audio data from WAV file"""
+        data_pos = audio_data.find(b'data')
+        if data_pos == -1:
+            logging.error("Could not find 'data' chunk in WAV file")
+            return None
+        
+        # Get audio data size and content
+        size_bytes = audio_data[data_pos + 4:data_pos + 8]
+        audio_size = struct.unpack('<I', size_bytes)[0]
+        audio_data_start = data_pos + 8
+        raw_audio = audio_data[audio_data_start:audio_data_start + audio_size]
+        
+        logging.info(f"Found {len(raw_audio)} bytes of mu-law audio data")
+        return raw_audio
+
+    def _create_pcm_wav_file(self, raw_audio, output_path):
+        """Create PCM WAV file from raw mu-law audio"""
+        # Convert mu-law to linear PCM
+        linear_frames = audioop.ulaw2lin(raw_audio, 2)
+        
+        # Resample from 8kHz to 16kHz for Azure Speech
+        resampled_frames = audioop.ratecv(linear_frames, 2, 1, 8000, 16000, None)[0]
+        
+        # Create proper PCM WAV file
+        with wave.open(output_path, 'wb') as out_wav:
+            out_wav.setnchannels(1)  # Mono
+            out_wav.setsampwidth(2)  # 16-bit
+            out_wav.setframerate(16000)  # 16kHz for Azure Speech
+            out_wav.writeframes(resampled_frames)
+
+    def _verify_conversion(self, converted_path):
+        """Verify that audio conversion was successful"""
+        if not os.path.exists(converted_path) or os.path.getsize(converted_path) <= 1000:
+            return False
+        
+        try:
+            probe_cmd = ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', converted_path]
+            probe_result = subprocess.run(probe_cmd, capture_output=True, text=True)
+            if probe_result.returncode == 0:
+                probe_data = json.loads(probe_result.stdout)
+                duration = float(probe_data.get('format', {}).get('duration', 0))
+                if duration > 1.0:
+                    logging.info(f"Python conversion successful! Duration: {duration:.2f}s")
+                    return True
+                else:
+                    logging.warning(f"Converted audio too short: {duration:.3f}s")
+            return False
+        except Exception:
+            return False
+
+    def _try_ffmpeg_conversion(self, original_path):
+        """Try FFmpeg conversion as fallback"""
+        logging.info("Trying FFmpeg conversion as fallback...")
+        try:
+            converted_path = original_path + '_ffmpeg.wav'
+            ffmpeg_cmd = [
+                'ffmpeg', '-y', '-i', original_path,
+                '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', '-f', 'wav',
+                converted_path
+            ]
+            
+            result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+            if result.returncode != 0 or not os.path.exists(converted_path) or os.path.getsize(converted_path) < 1000:
+                logging.error(f"FFmpeg conversion failed: {result.stderr}")
+                return None
+            
+            return converted_path
+        except Exception as e:
+            logging.error(f"FFmpeg conversion error: {e}")
+            return None
+
+    def _perform_speech_recognition(self, converted_path):
+        """Perform speech recognition on converted audio file"""
+        speech_config = SpeechConfig(
+            subscription=self.speech_key, 
+            region=self.speech_region
+        )
+        speech_config.speech_recognition_language = "en-US"
+        
+        try:
+            return self._try_continuous_recognition(speech_config, converted_path)
+        except Exception as e:
+            logging.error(f"Speech recognition error: {e}")
+            return f"[Recognition error: {str(e)}]"
+
+    def _try_continuous_recognition(self, speech_config, converted_path):
+        """Try continuous speech recognition"""
+        logging.info("Starting continuous speech recognition...")
+        audio_input = AudioConfig(filename=converted_path)
+        speech_recognizer = SpeechRecognizer(
+            speech_config=speech_config, 
+            audio_config=audio_input
+        )
+        
+        all_text = []
+        recognition_done = False
+        
+        def recognized_cb(evt):
+            if evt.result.text:
+                logging.info(f"Recognized: {evt.result.text}")
+                all_text.append(evt.result.text)
+        
+        def session_stopped_cb(evt):
+            nonlocal recognition_done
+            logging.info("Session stopped")
+            recognition_done = True
+        
+        def canceled_cb(evt):
+            nonlocal recognition_done
+            logging.info(f"Recognition canceled: {evt.reason}")
+            recognition_done = True
+        
+        # Connect callbacks and start recognition
+        speech_recognizer.recognized.connect(recognized_cb)
+        speech_recognizer.session_stopped.connect(session_stopped_cb)
+        speech_recognizer.canceled.connect(canceled_cb)
+        
+        speech_recognizer.start_continuous_recognition()
+        
+        # Wait for recognition to complete (with timeout)
+        import time
+        timeout = 60  # 60 seconds timeout
+        start_time = time.time()
+        
+        while not recognition_done and (time.time() - start_time) < timeout:
+            time.sleep(0.1)
+        
+        speech_recognizer.stop_continuous_recognition()
+        
+        return self._process_recognition_results(all_text, speech_recognizer)
+
+    def _process_recognition_results(self, all_text, speech_recognizer):
+        """Process the results from speech recognition"""
+        if all_text:
+            transcription = " ".join(all_text)
+            logging.info(f"Continuous transcription successful: {len(transcription)} characters")
+            return transcription
+        
+        # Fallback to single recognition if continuous failed
+        logging.info("Continuous recognition got no results, trying single recognition...")
+        result = speech_recognizer.recognize_once()
+        
+        if result.reason.name == 'RecognizedSpeech':
+            transcription = result.text
+            logging.info(f"Single recognition successful: {len(transcription)} characters")
+            return transcription
+        else:
+            logging.warning(f"Single recognition also failed: {result.reason}")
+            return "[No speech detected in audio file]"
+
+    def _cleanup_temp_files(self, original_path, converted_path):
+        """Clean up temporary files"""
+        try:
             if os.path.exists(original_path):
                 os.unlink(original_path)
-            if converted_path and os.path.exists(converted_path) and converted_path != original_path:
+            if converted_path and os.path.exists(converted_path):
                 os.unlink(converted_path)
-            
-            if result.reason.name == 'RecognizedSpeech':
-                logging.info(f"Transcription successful: {len(result.text)} characters")
-                return result.text
-            else:
-                logging.error(f"Speech recognition failed: {result.reason}")
-                return f"[Transcription failed: {result.reason}]"
-                
-        except Exception as e:
-            logging.error(f"Error in transcription: {str(e)}")
-            return f"[Error: {str(e)}]"
+        except Exception as cleanup_e:
+            logging.warning(f"Cleanup error: {cleanup_e}")
     
     def _extract_structured_data(self, transcript, email, attachment):
         """Extract structured data from transcript"""

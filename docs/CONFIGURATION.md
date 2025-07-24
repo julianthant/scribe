@@ -3,6 +3,7 @@
 ## 🔐 Security Configuration
 
 ### Azure Key Vault Setup
+
 ```bash
 # Create Key Vault (if not exists)
 az keyvault create \
@@ -21,14 +22,16 @@ az keyvault set-policy \
 ```
 
 ### Required Secrets in Key Vault
-| Secret Name | Description | Example Value |
-|-------------|-------------|---------------|
-| `personal-account-access-token` | Microsoft Graph access token | `eyJ0eXAiOiJKV1Q...` |
-| `personal-account-refresh-token` | Microsoft Graph refresh token | `M.R3_BAY.-ChSP...` |
+
+| Secret Name                      | Description                   | Example Value        |
+| -------------------------------- | ----------------------------- | -------------------- |
+| `personal-account-access-token`  | Microsoft Graph access token  | `eyJ0eXAiOiJKV1Q...` |
+| `personal-account-refresh-token` | Microsoft Graph refresh token | `M.R3_BAY.-ChSP...`  |
 
 ## 📧 Microsoft Graph API Configuration
 
 ### App Registration Settings
+
 ```json
 {
   "application_id": "your-app-id",
@@ -44,6 +47,7 @@ az keyvault set-policy \
 ```
 
 ### API Permissions Checklist
+
 - [ ] **Mail.ReadWrite** - Required for moving emails to processed folder
 - [ ] **Files.ReadWrite.All** - Required for Excel file operations on OneDrive
 - [ ] **User.Read** - Basic user profile access
@@ -52,6 +56,7 @@ az keyvault set-policy \
 ## 🎵 Azure Speech Services Configuration
 
 ### Service Setup
+
 ```bash
 # Create Speech Service
 az cognitiveservices account create \
@@ -63,13 +68,15 @@ az cognitiveservices account create \
 ```
 
 ### Supported Audio Formats
-| Format | Sample Rate | Channels | Bit Depth | Notes |
-|--------|-------------|----------|-----------|-------|
-| WAV | 16kHz | Mono | 16-bit | Preferred format |
-| PCM | 8kHz → 16kHz | Mono | 16-bit | Auto-converted from mu-law |
-| MP3 | Various | Mono/Stereo | Various | Automatically handled |
+
+| Format | Sample Rate  | Channels    | Bit Depth | Notes                      |
+| ------ | ------------ | ----------- | --------- | -------------------------- |
+| WAV    | 16kHz        | Mono        | 16-bit    | Preferred format           |
+| PCM    | 8kHz → 16kHz | Mono        | 16-bit    | Auto-converted from mu-law |
+| MP3    | Various      | Mono/Stereo | Various   | Automatically handled      |
 
 ### Speech Recognition Settings
+
 ```python
 speech_config = speechsdk.SpeechConfig(
     subscription=speech_key,
@@ -82,6 +89,7 @@ speech_config.enable_dictation()  # For better punctuation
 ## 📊 Excel File Configuration
 
 ### OneDrive File Structure
+
 ```
 OneDrive Root/
 ├── Scribe.xlsx (Main transcription log)
@@ -90,18 +98,20 @@ OneDrive Root/
 ```
 
 ### Excel Sheet Schema
-| Column | Type | Description | Example |
-|--------|------|-------------|---------|
-| A | DateTime | Timestamp | `2024-12-19 10:30:00` |
-| B | Text | From Email | `sender@example.com` |
-| C | Text | Subject | `Voice Message` |
-| D | Text | Transcription | `Hello, this is a test message...` |
-| E | Number | Audio Duration | `21.5` (seconds) |
-| F | Text | Processing Status | `Success` |
+
+| Column | Type     | Description       | Example                            |
+| ------ | -------- | ----------------- | ---------------------------------- |
+| A      | DateTime | Timestamp         | `2024-12-19 10:30:00`              |
+| B      | Text     | From Email        | `sender@example.com`               |
+| C      | Text     | Subject           | `Voice Message`                    |
+| D      | Text     | Transcription     | `Hello, this is a test message...` |
+| E      | Number   | Audio Duration    | `21.5` (seconds)                   |
+| F      | Text     | Processing Status | `Success`                          |
 
 ## ⏰ Timer Configuration
 
 ### Cron Expression Settings
+
 ```json
 {
   "schedule": "0 */1 * * * *",
@@ -111,16 +121,18 @@ OneDrive Root/
 ```
 
 ### Schedule Options
-| Frequency | Cron Expression | Use Case |
-|-----------|----------------|----------|
-| Every minute | `0 */1 * * * *` | **Current setting** - Real-time processing |
-| Every 5 minutes | `0 */5 * * * *` | Reduced costs, delayed processing |
-| Every hour | `0 0 * * * *` | Batch processing mode |
-| Business hours only | `0 */1 8-17 * * 1-5` | M-F 8am-5pm processing |
+
+| Frequency           | Cron Expression      | Use Case                                   |
+| ------------------- | -------------------- | ------------------------------------------ |
+| Every minute        | `0 */1 * * * *`      | **Current setting** - Real-time processing |
+| Every 5 minutes     | `0 */5 * * * *`      | Reduced costs, delayed processing          |
+| Every hour          | `0 0 * * * *`        | Batch processing mode                      |
+| Business hours only | `0 */1 8-17 * * 1-5` | M-F 8am-5pm processing                     |
 
 ## 🔧 Environment Variables
 
 ### Required Settings (local.settings.json)
+
 ```json
 {
   "IsEncrypted": false,
@@ -138,6 +150,7 @@ OneDrive Root/
 ```
 
 ### Azure Function App Settings
+
 ```bash
 # Set all required environment variables
 az functionapp config appsettings set \
@@ -154,6 +167,7 @@ az functionapp config appsettings set \
 ## 📁 Folder Organization
 
 ### Email Folder Structure
+
 ```
 Inbox/
 ├── (Unprocessed voice emails)
@@ -163,6 +177,7 @@ Inbox/
 ```
 
 ### Folder Creation Logic
+
 ```python
 # Automatic folder creation if not exists
 folder_name = "Voice Messages Processed"
@@ -173,6 +188,7 @@ folder_name = "Voice Messages Processed"
 ## 🔊 Audio Processing Configuration
 
 ### Mu-law to PCM Conversion
+
 ```python
 # Automatic conversion for Outlook voice messages
 # 8kHz mu-law → 16kHz PCM for Azure Speech
@@ -187,6 +203,7 @@ conversion_settings = {
 ```
 
 ### Speech Recognition Settings
+
 ```python
 # Continuous recognition for long voice messages
 recognition_config = {
@@ -201,14 +218,16 @@ recognition_config = {
 ## 💰 Cost Optimization
 
 ### Recommended Settings
-| Resource | Setting | Cost Impact |
-|----------|---------|-------------|
-| Function App | Consumption Plan | Pay per execution |
-| Speech Service | S0 Standard | $1/hour of audio |
-| Storage Account | Standard LRS | Minimal impact |
-| Key Vault | Standard | $0.03 per 10K operations |
+
+| Resource        | Setting          | Cost Impact              |
+| --------------- | ---------------- | ------------------------ |
+| Function App    | Consumption Plan | Pay per execution        |
+| Speech Service  | S0 Standard      | $1/hour of audio         |
+| Storage Account | Standard LRS     | Minimal impact           |
+| Key Vault       | Standard         | $0.03 per 10K operations |
 
 ### Cost Monitoring
+
 ```bash
 # Set up cost alerts
 az consumption budget create \
@@ -221,6 +240,7 @@ az consumption budget create \
 ## 🔄 Backup & Recovery
 
 ### Configuration Backup
+
 ```bash
 # Export app settings
 az functionapp config appsettings list \
@@ -235,6 +255,7 @@ az keyvault secret list \
 ```
 
 ### Recovery Procedures
+
 1. **Function App Recovery**: Redeploy from git repository
 2. **Token Recovery**: Re-run OAuth setup script
 3. **Configuration Recovery**: Restore from backup files

@@ -3,6 +3,7 @@
 ## Prerequisites
 
 ### Azure Resources Required
+
 - ✅ **Azure Function App** (Python 3.12 runtime)
 - ✅ **Azure Storage Account** (for blob storage and function storage)
 - ✅ **Azure Speech Services** (for audio transcription)
@@ -10,6 +11,7 @@
 - ✅ **Azure App Registration** (with Mail.ReadWrite permissions)
 
 ### Local Development Tools
+
 - ✅ **Azure Functions Core Tools** v4.x
 - ✅ **Azure CLI** v2.x
 - ✅ **Python** 3.12+
@@ -18,6 +20,7 @@
 ## 🔧 Configuration Setup
 
 ### 1. Azure App Registration
+
 ```bash
 # Required API Permissions:
 - Microsoft Graph API:
@@ -32,6 +35,7 @@
 ```
 
 ### 2. OAuth Token Setup
+
 ```bash
 # Run the token setup script
 python scripts/get_new_token.py
@@ -44,7 +48,9 @@ python scripts/get_new_token.py
 ```
 
 ### 3. Environment Variables
+
 Update `local.settings.json`:
+
 ```json
 {
   "IsEncrypted": false,
@@ -64,6 +70,7 @@ Update `local.settings.json`:
 ## 🏗️ Deployment Steps
 
 ### Method 1: Automated Deployment
+
 ```bash
 # Run the deployment script
 python scripts/deploy.py
@@ -76,6 +83,7 @@ python scripts/deploy.py
 ```
 
 ### Method 2: Manual Deployment
+
 ```bash
 # 1. Login to Azure
 az login
@@ -102,6 +110,7 @@ az keyvault secret set \
 ## ✅ Post-Deployment Verification
 
 ### 1. Function Health Check
+
 ```bash
 # Check function status
 az functionapp show \
@@ -113,6 +122,7 @@ az functionapp show \
 ```
 
 ### 2. Timer Trigger Verification
+
 ```bash
 # Check function logs
 az functionapp logs tail \
@@ -123,6 +133,7 @@ az functionapp logs tail \
 ```
 
 ### 3. Test Email Processing
+
 1. **Send Test Email**: Send an email with a voice attachment
 2. **Monitor Logs**: Watch for processing in Azure portal
 3. **Check Excel**: Verify entry in OneDrive Scribe.xlsx
@@ -131,6 +142,7 @@ az functionapp logs tail \
 ## 🔍 Monitoring & Troubleshooting
 
 ### Application Insights
+
 ```bash
 # Enable Application Insights
 az functionapp config appsettings set \
@@ -142,6 +154,7 @@ az functionapp config appsettings set \
 ### Common Issues
 
 #### 1. OAuth Token Expired
+
 ```bash
 # Symptoms: 401 Unauthorized errors
 # Solution: Refresh tokens
@@ -149,6 +162,7 @@ python scripts/refresh_tokens.py
 ```
 
 #### 2. Audio Conversion Failures
+
 ```bash
 # Symptoms: "Audio format not supported"
 # Solution: Check audio file format
@@ -156,6 +170,7 @@ python scripts/analyze_audio.py
 ```
 
 #### 3. Mail.ReadWrite Permission Missing
+
 ```bash
 # Symptoms: 403 Forbidden on folder operations
 # Solution: Re-run token setup with new permissions
@@ -165,6 +180,7 @@ python scripts/get_new_token.py
 ## 🔄 Updates & Maintenance
 
 ### Updating Code
+
 ```bash
 # 1. Test locally
 python tests/test_local_processing.py
@@ -174,12 +190,14 @@ python scripts/redeploy.py
 ```
 
 ### Token Refresh
+
 ```bash
 # Tokens refresh automatically, but for manual refresh:
 python scripts/refresh_tokens.py
 ```
 
 ### Monitoring Costs
+
 - **Function Executions**: ~1440/day (1-minute timer)
 - **Speech Service**: Per audio minute processed
 - **Storage**: Minimal (temporary files only)
@@ -188,11 +206,13 @@ python scripts/refresh_tokens.py
 ## 📊 Expected Performance
 
 ### Processing Times
+
 - **Empty Check**: 2-3 seconds (no voice emails)
 - **Voice Processing**: 30-60 seconds (depending on audio length)
 - **Response Time**: ~1 minute from email arrival
 
 ### Reliability Features
+
 - ✅ **Automatic Retry**: Built into Azure Functions
 - ✅ **Error Handling**: Comprehensive exception handling
 - ✅ **Logging**: Detailed logs for debugging
