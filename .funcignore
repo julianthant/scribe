@@ -1,0 +1,42 @@
+# Python
+
+.venv
+**pycache**
+.python_packages
+_.pyc
+_.pyo
+\*.pyd
+
+# Azure
+
+.deployment_info.json
+.oauth_tokens.json
+
+# IDE/Editor
+
+.vscode
+.idea
+_.swp
+_.swo
+
+# Logs
+
+\*.log
+
+# Git
+
+.git
+.gitignore
+
+# Documentation and scripts
+
+README.md
+task.md
+deploy.py
+oauth_refresh.py
+test_comprehensive.py
+
+# Temporary files
+
+_.tmp
+_.temp
