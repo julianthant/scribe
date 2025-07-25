@@ -50,22 +50,22 @@ class EmailProcessor:
             return []
     
     def _fetch_emails_with_attachments(self, max_emails: int) -> List[dict]:
-        """Fetch emails with attachments from Microsoft Graph"""
+        """Fetch emails with attachments from inbox folder only"""
         try:
-            # Search for emails with attachments (cast wider net)
-            url = f"https://graph.microsoft.com/v1.0/me/messages?$filter=hasAttachments eq true&$top={max_emails * 3}"
+            # Search for emails with attachments in inbox folder only
+            url = f"https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?$filter=hasAttachments eq true&$top={max_emails * 3}"
             
             response = make_graph_request(url)
             if not response or response.status_code != 200:
-                logger.error(f"❌ Failed to fetch emails: {response.status_code if response else 'No response'}")
+                logger.error(f"❌ Failed to fetch inbox emails: {response.status_code if response else 'No response'}")
                 return []
             
             messages = response.json().get('value', [])
-            logger.info(f"📧 Found {len(messages)} emails with attachments")
+            logger.info(f"📧 Found {len(messages)} emails with attachments in inbox")
             return messages
             
         except Exception as e:
-            logger.error(f"❌ Error fetching emails: {e}")
+            logger.error(f"❌ Error fetching inbox emails: {e}")
             return []
     
     def _filter_messages_by_date(self, messages: List[dict], days_back: int, max_emails: int) -> List[dict]:
@@ -288,23 +288,141 @@ class EmailProcessor:
             return None
     
     def mark_email_processed(self, message_id: str) -> bool:
-        """Mark email as processed by moving to a folder or adding a flag"""
+        """Mark email as read and move to Voice Messages Processed folder"""
         try:
-            # Option 1: Add a category
+            # Step 1: Mark as read
+            read_success = self._mark_email_as_read(message_id)
+            
+            # Step 2: Move to processed folder
+            move_success = self._move_email_to_processed_folder(message_id)
+            
+            if read_success and move_success:
+                logger.info(f"✅ Email marked as read and moved to processed folder: {message_id}")
+                return True
+            else:
+                logger.warning(f"⚠️ Partial success - read: {read_success}, moved: {move_success}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ Error processing email: {e}")
+            return False
+    
+    def _mark_email_as_read(self, message_id: str) -> bool:
+        """Mark email as read"""
+        try:
             url = f"https://graph.microsoft.com/v1.0/me/messages/{message_id}"
             data = {
-                "categories": ["Scribe Processed"]
+                "isRead": True
             }
             
             response = make_graph_request(url, method='PATCH', data=data)
             
             if response and response.status_code == 200:
-                logger.info(f"✅ Email marked as processed: {message_id}")
+                logger.info(f"📖 Email marked as read: {message_id}")
                 return True
             else:
-                logger.warning(f"⚠️ Failed to mark email as processed: {response.status_code if response else 'No response'}")
+                logger.warning(f"⚠️ Failed to mark email as read: {response.status_code if response else 'No response'}")
                 return False
                 
         except Exception as e:
-            logger.error(f"❌ Error marking email as processed: {e}")
+            logger.error(f"❌ Error marking email as read: {e}")
             return False
+    
+    def _move_email_to_processed_folder(self, message_id: str) -> bool:
+        """Move email to Voice Messages Processed folder"""
+        try:
+            # First, ensure the processed folder exists
+            processed_folder_id = self._get_or_create_processed_folder()
+            if not processed_folder_id:
+                logger.error("❌ Could not get or create processed folder")
+                return False
+            
+            # Move the message
+            url = f"https://graph.microsoft.com/v1.0/me/messages/{message_id}/move"
+            data = {
+                "destinationId": processed_folder_id
+            }
+            
+            response = make_graph_request(url, method='POST', data=data)
+            
+            if response and response.status_code == 201:  # Created (message moved)
+                logger.info(f"📁 Email moved to processed folder: {message_id}")
+                return True
+            else:
+                logger.warning(f"⚠️ Failed to move email: {response.status_code if response else 'No response'}")
+                if response:
+                    logger.warning(f"   Response: {response.text}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ Error moving email to processed folder: {e}")
+            return False
+    
+    def _get_or_create_processed_folder(self) -> Optional[str]:
+        """Get or create the Voice Messages Processed folder"""
+        try:
+            folder_name = "Voice Messages Processed"
+            
+            # First, try to find existing folder
+            folder_id = self._find_folder_by_name(folder_name)
+            if folder_id:
+                logger.info(f"📁 Found existing processed folder: {folder_id}")
+                return folder_id
+            
+            # If not found, create it
+            folder_id = self._create_folder(folder_name)
+            if folder_id:
+                logger.info(f"📁 Created new processed folder: {folder_id}")
+                return folder_id
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Error getting or creating processed folder: {e}")
+            return None
+    
+    def _find_folder_by_name(self, folder_name: str) -> Optional[str]:
+        """Find a mail folder by name"""
+        try:
+            url = "https://graph.microsoft.com/v1.0/me/mailFolders"
+            response = make_graph_request(url)
+            
+            if not response or response.status_code != 200:
+                logger.warning(f"⚠️ Failed to get mail folders: {response.status_code if response else 'No response'}")
+                return None
+            
+            folders = response.json().get('value', [])
+            for folder in folders:
+                if folder.get('displayName') == folder_name:
+                    return folder.get('id')
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Error finding folder by name: {e}")
+            return None
+    
+    def _create_folder(self, folder_name: str) -> Optional[str]:
+        """Create a new mail folder"""
+        try:
+            url = "https://graph.microsoft.com/v1.0/me/mailFolders"
+            data = {
+                "displayName": folder_name
+            }
+            
+            response = make_graph_request(url, method='POST', data=data)
+            
+            if response and response.status_code == 201:  # Created
+                folder_data = response.json()
+                folder_id = folder_data.get('id')
+                logger.info(f"📁 Created folder '{folder_name}' with ID: {folder_id}")
+                return folder_id
+            else:
+                logger.error(f"❌ Failed to create folder: {response.status_code if response else 'No response'}")
+                if response:
+                    logger.error(f"   Response: {response.text}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"❌ Error creating folder: {e}")
+            return None
