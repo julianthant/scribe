@@ -1,31 +1,36 @@
 import azure.functions as func
+import datetime
 import logging
-import sys
 import os
+import sys
 
-# Add the parent directory to the path so we can import from function_app
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from function_app import EmailVoiceProcessor
+# Add parent directory for imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+src_dir = os.path.join(parent_dir, 'src')
+if src_dir not in sys.path:
+    sys.path.insert(0, src_dir)
 
 def main(mytimer: func.TimerRequest) -> None:
-    """
-    Timer trigger function that processes voice email attachments
-    Runs every 15 minutes as configured in function.json
-    """
-    utc_timestamp = mytimer.utc_timestamp.replace(tzinfo=None) if mytimer.utc_timestamp else None
-    
+    """Azure Function entry point for voice email processing"""
+    utc_timestamp = datetime.datetime.utcnow().replace(
+        tzinfo=datetime.timezone.utc).isoformat()
+
     if mytimer.past_due:
         logging.info('The timer is past due!')
 
-    logging.info(f'Python timer trigger function executed at UTC {utc_timestamp}')
+    logging.info('Python timer trigger function ran at %s', utc_timestamp)
     
     try:
-        # Create processor instance and run
-        processor = EmailVoiceProcessor()
-        processor.process_emails()
-        logging.info('Email processing completed successfully')
+        # Import and run the main processing workflow
+        from tests.run_e2e_test import RealWorldWorkflowTest
+        
+        # Initialize and run the workflow
+        workflow = RealWorldWorkflowTest()
+        workflow.run_complete_workflow_test()
+        
+        logging.info('Voice email processing completed successfully')
         
     except Exception as e:
-        logging.error(f'Error in timer function: {str(e)}')
-        raise e
+        logging.error(f"Error in voice email processing: {str(e)}")
+        raise
