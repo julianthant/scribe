@@ -1,10 +1,27 @@
-azure-functions
+# Azure Functions Core
+azure-functions>=1.18.0
+
+# Azure SDK
 azure-storage-blob>=12.19.0
-azure-cognitiveservices-speech>=1.34.0
-requests>=2.31.0
-msgraph-core>=0.2.2
 azure-identity>=1.15.0
 azure-keyvault-secrets>=4.7.0
-openpyxl>=3.1.0
+
+# Azure AI/Cognitive Services
+azure-cognitiveservices-speech>=1.34.0
+
+# Microsoft Graph
+msgraph-core>=0.2.2
+requests>=2.31.0
+
+# File Processing
+openpyxl>=3.1.2
 pydub>=0.25.0
+
+# Utilities
 pytz>=2023.3
+PyJWT>=2.8.0
+
+# Testing (for Phase 3 local testing)
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-mock>=3.11.0

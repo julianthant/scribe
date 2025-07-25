@@ -1,24 +1,49 @@
 """
-Voice Email Processing Components Package
-Contains all the modular components for voice email processing
+Production Scribe Voice Email Processor
 """
 
-from .azure_foundry_processor_class import AzureFoundryAudioProcessor
-from .azure_foundry_processor_functions import (
-    create_foundry_audio_processor,
-    test_foundry_transcription,
-    process_audio_file,
-    batch_process_audio_files
+# Export production processors
+from .processors import (
+    ScribeEmailProcessor,
+    ScribeExcelProcessor, 
+    ScribeTranscriptionProcessor,
+    ScribeWorkflowProcessor
 )
-from .excel_processor_class import ExcelProcessor
-from .email_processor_class import EmailProcessor
+
+# Export core architecture
+from .core import (
+    ScribeConfigurationManager,
+    ScribeServiceInitializer,
+    ScribeWorkflowOrchestrator,
+    ScribeErrorHandler,
+    ScribeLogger
+)
+
+# Export models
+from .models import (
+    EmailMessage,
+    VoiceAttachment,
+    TranscriptionResult,
+    WorkflowRun
+)
 
 __all__ = [
-    'AzureFoundryAudioProcessor',
-    'create_foundry_audio_processor',
-    'test_foundry_transcription',
-    'process_audio_file',
-    'batch_process_audio_files',
-    'ExcelProcessor',
-    'EmailProcessor'
+    # Processors
+    'ScribeEmailProcessor',
+    'ScribeExcelProcessor', 
+    'ScribeTranscriptionProcessor',
+    'ScribeWorkflowProcessor',
+    
+    # Core
+    'ScribeConfigurationManager',
+    'ScribeServiceInitializer',
+    'ScribeWorkflowOrchestrator', 
+    'ScribeErrorHandler',
+    'ScribeLogger',
+    
+    # Models
+    'EmailMessage',
+    'VoiceAttachment',
+    'TranscriptionResult',
+    'WorkflowRun'
 ]

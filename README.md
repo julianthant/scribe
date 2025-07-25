@@ -18,6 +18,7 @@ This production system automatically:
 6. **🚫 Error Handling**: Comprehensive logging and recovery
 
 ### ✅ Latest Test Results (July 24, 2025)
+
 ```
 🚀 COMPREHENSIVE END-TO-END TEST
 ======================================================================
@@ -32,6 +33,7 @@ This production system automatically:
 ```
 
 ### 🚀 Currently Deployed
+
 - **Function App**: `scribe-voice-processor` (East US)
 - **URL**: https://scribe-voice-processor.azurewebsites.net
 - **Excel File**: `Scribe.xlsx` (OneDrive root)
@@ -165,7 +167,7 @@ The function uses these configuration values (stored in Key Vault when deployed)
 - `AZURE_STORAGE_CONNECTION_STRING`: Storage account connection
 - `SPEECH_SERVICE_KEY`: Azure Speech Services API key
 - `SPEECH_SERVICE_REGION`: Azure region (e.g., "eastus")
-- `EXCEL_FILE_NAME`: Name of Excel file in OneDrive (default: "scribe.xlsx")
+- `EXCEL_FILE_NAME`: Name of Excel file in OneDrive (default: "Scribe.xlsx")
 - `TARGET_USER_EMAIL`: Email to monitor (default: uses authenticated user)
 - `KEY_VAULT_URL`: Azure Key Vault URL for token storage
 
