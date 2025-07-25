@@ -5,13 +5,14 @@ Handles Excel file operations with error handling and monitoring
 
 import logging
 from typing import Dict, Any, Optional, List
-import requests
 from datetime import datetime
 
 from ..core import ScribeLogger, ScribeErrorHandler, ScribeConfigurationManager
 from ..helpers.retry_helpers import RetryConfig, retry_with_exponential_backoff
 from ..helpers.performance_helpers import PerformanceTimer
 from ..helpers.validation_helpers import validate_url
+from ..helpers.http_helpers import make_authenticated_request
+from ..helpers.request_config import RequestConfig
 
 
 class ScribeExcelProcessor:
@@ -23,29 +24,21 @@ class ScribeExcelProcessor:
         self.config = configuration_manager
         self.error_handler = error_handler
         self.logger = logger
-        self.access_token = None
+        self.auth_manager = None
         self.excel_file_name = None
-        
-        # Request timeout configuration
-        self.request_timeout = 60
-        
-        # Retry configuration for Excel operations
-        self.retry_config = RetryConfig(
-            max_attempts=3,
-            base_delay=2.0,
-            max_delay=60.0,
-            exponential_base=2.0
-        )
     
-    def initialize(self, access_token: str, excel_file_name: str) -> bool:
-        """Initialize processor with authentication and file configuration"""
+    def initialize(self, excel_file_name: str) -> bool:
+        """Initialize processor with file configuration"""
         try:
-            self.access_token = access_token
+            # Get centralized auth manager
+            from ..helpers.auth_helpers import get_auth_manager
+            self.auth_manager = get_auth_manager()
+            
             self.excel_file_name = excel_file_name
             
             self.logger.log_info("Excel processor initialized successfully", {
                 'excel_file_name': excel_file_name,
-                'has_token': bool(access_token)
+                'has_auth_manager': bool(self.auth_manager)
             })
             return True
             
@@ -115,14 +108,13 @@ class ScribeExcelProcessor:
         """Find Excel file in OneDrive"""
         
         def _search_operation():
-            headers = self._get_request_headers()
-            search_url = "https://graph.microsoft.com/v1.0/me/drive/search(q='{}')"
-            url = search_url.format(self.excel_file_name)
+            search_url = f"{RequestConfig.ENDPOINTS['graph_drive']}/search(q='{self.excel_file_name}')"
             
-            response = requests.get(url, headers=headers, timeout=self.request_timeout)
-            
-            if response.status_code != 200:
-                raise Exception(f"Search failed: {response.text}")
+            response = make_authenticated_request(
+                'GET', search_url,
+                token_type='graph',
+                operation_type='api'
+            )
             
             items = response.json().get('value', [])
             excel_files = [item for item in items if item['name'] == self.excel_file_name]
@@ -133,7 +125,11 @@ class ScribeExcelProcessor:
             return excel_files[0]['webUrl']
         
         try:
-            workbook_url = retry_with_exponential_backoff(_search_operation, self.retry_config)
+            workbook_url = retry_with_exponential_backoff(
+                _search_operation, 
+                RequestConfig.get_retry_for_operation('network'),
+                "find_excel_file"
+            )
             self.logger.log_info(f"Found Excel file: {workbook_url}")
             return workbook_url
             
@@ -193,7 +189,11 @@ class ScribeExcelProcessor:
             return self._update_cell_range(workbook_id, range_address, values)
         
         try:
-            return retry_with_exponential_backoff(_insert_operation, self.retry_config)
+            return retry_with_exponential_backoff(
+                _insert_operation, 
+                RequestConfig.get_retry_for_operation('network'),
+                "insert_data_operation"
+            )
         except Exception as e:
             self.error_handler.handle_error(e, f"Failed to insert data in column {column}")
             return False
@@ -239,7 +239,11 @@ class ScribeExcelProcessor:
             return self._update_cell_range(workbook_id, range_address, headers_data["values"])
         
         try:
-            return retry_with_exponential_backoff(_headers_operation, self.retry_config)
+            return retry_with_exponential_backoff(
+                _headers_operation, 
+                RequestConfig.get_retry_for_operation('network'),
+                "ensure_headers_operation"
+            )
         except Exception as e:
             self.error_handler.handle_error(e, "Failed to ensure headers exist")
             return False
@@ -248,10 +252,13 @@ class ScribeExcelProcessor:
         """Get the used range of the worksheet"""
         
         def _range_operation():
-            headers = self._get_request_headers()
-            url = f"https://graph.microsoft.com/v1.0/me/drive/items/{workbook_id}/workbook/worksheets/Sheet1/usedRange"
+            url = f"{RequestConfig.ENDPOINTS['graph_drive']}/items/{workbook_id}/workbook/worksheets/Sheet1/usedRange"
             
-            response = requests.get(url, headers=headers, timeout=self.request_timeout)
+            response = make_authenticated_request(
+                'GET', url,
+                token_type='graph',
+                operation_type='api'
+            )
             
             if response.status_code == 200:
                 return response.json()
@@ -261,7 +268,11 @@ class ScribeExcelProcessor:
                 raise Exception(f"Failed to get used range: {response.text}")
         
         try:
-            return retry_with_exponential_backoff(_range_operation, self.retry_config)
+            return retry_with_exponential_backoff(
+                _range_operation, 
+                RequestConfig.get_retry_for_operation('network'),
+                "get_used_range"
+            )
         except Exception as e:
             self.error_handler.handle_error(e, "Failed to get used range")
             return None
@@ -306,28 +317,29 @@ class ScribeExcelProcessor:
         """Update cell range with values"""
         
         def _update_operation():
-            headers = self._get_request_headers()
-            url = f"https://graph.microsoft.com/v1.0/me/drive/items/{workbook_id}/workbook/worksheets/Sheet1/range(address='{range_address}')"
+            url = f"{RequestConfig.ENDPOINTS['graph_drive']}/items/{workbook_id}/workbook/worksheets/Sheet1/range(address='{range_address}')"
             
             data = {"values": values}
             
-            response = requests.patch(url, headers=headers, json=data,
-                                    timeout=self.request_timeout)
-            
-            if response.status_code not in [200, 201]:
-                raise Exception(f"Failed to update range: {response.text}")
+            response = make_authenticated_request(
+                'PATCH', url,
+                token_type='graph',
+                operation_type='api',
+                json=data
+            )
             
             return True
         
         try:
-            return retry_with_exponential_backoff(_update_operation, self.retry_config)
+            return retry_with_exponential_backoff(
+                _update_operation, 
+                RequestConfig.get_retry_for_operation('network'),
+                "update_cell_range"
+            )
         except Exception as e:
             self.error_handler.handle_error(e, f"Failed to update range {range_address}")
             return False
     
     def _get_request_headers(self) -> Dict[str, str]:
         """Get headers for Graph API requests"""
-        return {
-            'Authorization': f'Bearer {self.access_token}',
-            'Content-Type': 'application/json'
-        }
+        return self.auth_manager.get_auth_headers('graph')

@@ -25,7 +25,7 @@ Resource Group: scribe-voice-processor-rg (East US)
 ├── Storage Account (scribevoiceprocessor)
 │   ├── Function storage
 │   └── Temporary audio files
-├── Azure AI Foundry Project (use existing)
+├── Azure AI Foundry Project
 │   ├── Speech-to-Text Service
 │   └── GPT model for analysis
 ├── Key Vault (scribe-voice-kv)

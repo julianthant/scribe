@@ -1,14 +1,24 @@
 # 🎙️ Voice Email Processor (Scribe)
 
-> **Production-Ready Azure Function for Automated Voice Message Transcription**
+> **Production-Ready Azure Function with Enterprise Architecture**
 
 An intelligent Azure Function that automatically processes voice messages sent via email attachments, transcribes them using Azure Speech Services with continuous recognition, and organizes results in Excel with smart email folder management.
 
 ## 🎯 Overview
 
-**✅ STATUS: PRODUCTION READY - ALL TESTS PASSING**
+**✅ STATUS: PRODUCTION READY - ENTERPRISE ARCHITECTURE v2.0**
 
-This production system automatically:
+This production system features:
+
+### 🏗️ **New Enterprise Architecture (v2.0)**
+
+- **🔐 Persistent Authentication**: Token caching with automatic refresh
+- **⚡ Centralized HTTP Client**: Unified request patterns with operation-specific timeouts
+- **📋 Request Configuration**: Centralized timeout and retry policies
+- **🔄 Code Deduplication**: Eliminated duplicate error handlers and optimized codebase
+- **⏰ Modern DateTime**: Updated to timezone-aware datetime handling
+
+### 🚀 **Core Functionality**
 
 1. **📧 Monitors Inbox**: Checks your Outlook inbox every 5 minutes for voice attachments
 2. **🎵 Smart Audio Processing**: Handles audio files with Azure Foundry Fast Transcription (4.9x speed)
@@ -20,16 +30,17 @@ This production system automatically:
 ### ✅ Latest Test Results (July 24, 2025)
 
 ```
-🚀 COMPREHENSIVE END-TO-END TEST
+🚀 COMPREHENSIVE END-TO-END TEST + ARCHITECTURE v2.0
 ======================================================================
-✅ Authentication & Token Management
+✅ Authentication & Token Management (NEW: Persistent Caching)
 ✅ Excel File Discovery (Scribe.xlsx found)
 ✅ Excel Workbook Access (Microsoft Graph API working)
 ✅ Excel Data Update (Row-based insertion successful)
+✅ Centralized Services Integration (NEW: HTTP Client & Config)
 ✅ Full Integration Test
 
-📈 Tests Passed: 5/5 (100% Success Rate)
-🎉 ALL TESTS PASSED - READY FOR PRODUCTION!
+📈 Tests Passed: 6/6 (100% Success Rate)
+🎉 ALL TESTS PASSED - ENTERPRISE READY!
 ```
 
 ### 🚀 Currently Deployed
@@ -38,8 +49,9 @@ This production system automatically:
 - **URL**: https://scribe-voice-processor.azurewebsites.net
 - **Excel File**: `Scribe.xlsx` (OneDrive root)
 - **Processing**: Every 5 minutes automatically
+- **Architecture**: v2.0 Enterprise Services
 
-## 🏗️ Architecture
+## 🏗️ Enterprise Architecture v2.0
 
 ```
 ┌─────────────────────┐    ┌──────────────────────┐    ┌─────────────────────┐
@@ -48,11 +60,49 @@ This production system automatically:
 └─────────────────────┘    └──────────────────────┘    └─────────────────────┘
                                       │                           │
                                       ▼                           ▼
-┌─────────────────────┐    ┌──────────────────────┐    ┌─────────────────────┐
-│  Processed Folder   │◀───│   Email Organization │◀───│   Excel Logging     │
-│  (Organized)        │    │   (Folder Management)│    │   (OneDrive)        │
-└─────────────────────┘    └──────────────────────┘    └─────────────────────┘
+                            ┌─────────────────────┐    ┌─────────────────────┐
+                            │  Centralized        │    │    Excel Storage    │
+                            │  Services v2.0      │───▶│   (OneDrive)        │
+                            └─────────────────────┘    └─────────────────────┘
+                                      │
+                            ┌─────────┼─────────┐
+                            │         │         │
+                    ┌───────▼───┐ ┌───▼───┐ ┌───▼──────┐
+                    │ Auth Mgr  │ │ HTTP  │ │ Request  │
+                    │ + Cache   │ │Client │ │ Config   │
+                    └───────────┘ └───────┘ └──────────┘
 ```
+
+### 🔧 **New Centralized Services**
+
+#### 🔐 **Persistent Authentication Manager**
+
+- **Token Caching**: JSON file persistence with automatic refresh
+- **Multi-Service Support**: Graph API, AI Foundry, Storage authentication
+- **Thread-Safe Operations**: Concurrent access protection
+- **Location**: `~/.scribe_tokens.json`
+
+#### ⚡ **HTTP Client with Smart Timeouts**
+
+- **Operation-Specific Timeouts**:
+  - `auth`: 30s (Authentication)
+  - `api`: 60s (Standard API calls)
+  - `file_transfer`: 300s (File operations)
+  - `processing`: 600s (Long operations)
+- **Unified Error Handling**: Consistent patterns across all requests
+- **Automatic Auth Injection**: Headers managed automatically
+
+#### 📋 **Request Configuration System**
+
+- **Centralized Endpoints**: All service URLs in one location
+- **Retry Policies**: Network-aware retry configurations
+- **Service Headers**: Predefined headers for different Azure services
+  ┌─────────────────────┐ ┌──────────────────────┐ ┌─────────────────────┐
+  │ Processed Folder │◀───│ Email Organization │◀───│ Excel Logging │
+  │ (Organized) │ │ (Folder Management)│ │ (OneDrive) │
+  └─────────────────────┘ └──────────────────────┘ └─────────────────────┘
+
+````
 
 ### Core Components:
 
@@ -87,7 +137,7 @@ This production system automatically:
 ```bash
 git clone <repository-url>
 cd voice-email-processor
-```
+````
 
 ### 2. Install Dependencies
 

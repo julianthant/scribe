@@ -1,7 +1,79 @@
 """
-Production Email Processor using new core architecture
+Production Email Processor using centralized architecture
 Handles email retrieval, filtering, and processing coordination
 """
+
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import List, Dict, Any, Optional
+
+from ..core import ScribeLogger, ScribeErrorHandler, ScribeConfigurationManager
+from ..helpers.validation_helpers import validate_email_address
+from ..helpers.retry_helpers import RetryConfig, retry_with_exponential_backoff
+from ..helpers.performance_helpers import PerformanceTimer
+from ..helpers.http_helpers import make_authenticated_request
+from ..helpers.auth_helpers import get_auth_manager
+from ..helpers.request_config import RequestConfig
+from ..models import EmailMessage, VoiceAttachment, EmailStatus, ProcessingResult
+
+
+class ScribeEmailProcessor:
+    """Production email processor with centralized authentication and HTTP handling"""
+    
+    def __init__(self, configuration_manager: ScribeConfigurationManager, 
+                 error_handler: ScribeErrorHandler, logger: ScribeLogger):
+        """Initialize email processor with injected dependencies"""
+        self.config = configuration_manager
+        self.error_handler = error_handler
+        self.logger = logger
+        self.target_user_email = None
+        
+        # Get centralized services
+        self.auth_manager = get_auth_manager(self.config.client_id)
+        
+        # Email processing settings
+        self.voice_extensions = {'.wav', '.mp3', '.m4a', '.amr', '.3gp', '.flac', '.ogg'}
+        
+        try:
+            self.logger.log_info("Email processor initialized successfully", {
+                'voice_extensions_count': len(self.voice_extensions),
+                'has_auth_manager': bool(self.auth_manager)
+            })
+        except Exception as e:
+            self.error_handler.handle_error(e, "Failed to initialize email processor")
+    
+    def initialize(self, target_user_email: str) -> bool:
+        """
+        Initialize email processor with target user email
+        
+        Args:
+            target_user_email: Target email address for processing
+            
+        Returns:
+            bool: True if initialization successful
+        """
+        try:
+            # Validate email
+            if not validate_email_address(target_user_email):
+                raise ValueError(f"Invalid target email address: {target_user_email}")
+            
+            self.target_user_email = target_user_email
+            
+            # Test authentication
+            auth_headers = self.auth_manager.get_auth_headers('graph')
+            if not auth_headers:
+                raise Exception("Failed to obtain authentication headers")
+            
+            self.logger.log_info("Email processor initialized", {
+                'target_email': target_user_email,
+                'has_auth': bool(auth_headers)
+            })
+            
+            return True
+            
+        except Exception as e:
+            self.error_handler.handle_error(e, "Failed to initialize email processor")
+            return False
 
 import logging
 from datetime import datetime, timedelta, timezone
@@ -24,32 +96,24 @@ class ScribeEmailProcessor:
         self.config = configuration_manager
         self.error_handler = error_handler
         self.logger = logger
-        self.access_token = None
+        self.auth_manager = None
         self.target_user_email = None
-        
-        # Request timeout configuration
-        self.request_timeout = 60
-        
-        # Retry configuration for email operations
-        self.retry_config = RetryConfig(
-            max_attempts=3,
-            base_delay=1.0,
-            max_delay=30.0,
-            exponential_base=2.0
-        )
     
-    def initialize(self, access_token: str, target_user_email: str) -> bool:
-        """Initialize processor with authentication tokens"""
+    def initialize(self, target_user_email: str) -> bool:
+        """Initialize processor with target email configuration"""
         try:
+            # Get centralized auth manager
+            from ..helpers.auth_helpers import get_auth_manager
+            self.auth_manager = get_auth_manager()
+            
             if not validate_email_address(target_user_email):
                 raise ValueError(f"Invalid target email address: {target_user_email}")
             
-            self.access_token = access_token
             self.target_user_email = target_user_email
             
             self.logger.log_info("Email processor initialized successfully", {
                 'target_email': target_user_email,
-                'has_token': bool(access_token)
+                'has_auth_manager': bool(self.auth_manager)
             })
             return True
             
@@ -132,10 +196,9 @@ class ScribeEmailProcessor:
         """Fetch emails from inbox with attachments using retry logic"""
         
         def _fetch_operation():
-            headers = self._get_request_headers()
             time_filter = self._get_time_filter(days_back)
             
-            url = "https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages"
+            url = f"{RequestConfig.ENDPOINTS['graph_messages']}/inbox/messages"
             params = {
                 '$filter': f"receivedDateTime ge {time_filter} and hasAttachments eq true",
                 '$expand': 'attachments',
@@ -144,15 +207,20 @@ class ScribeEmailProcessor:
                 '$top': max_emails
             }
             
-            response = requests.get(url, headers=headers, params=params, 
-                                  timeout=self.request_timeout)
-            
-            if response.status_code != 200:
-                raise Exception(f"Graph API error: {response.status_code} - {response.text}")
+            response = make_authenticated_request(
+                'GET', url,
+                token_type='graph',
+                operation_type='api',
+                params=params
+            )
             
             return response.json().get('value', [])
         
-        return retry_with_exponential_backoff(_fetch_operation, self.retry_config)
+        return retry_with_exponential_backoff(
+            _fetch_operation, 
+            RequestConfig.get_retry_for_operation('network'),
+            "fetch_inbox_emails"
+        )
     
     def _convert_to_email_message(self, email_data: Dict) -> Optional[EmailMessage]:
         """Convert Graph API email data to EmailMessage model"""
@@ -196,12 +264,13 @@ class ScribeEmailProcessor:
         """Download attachment content from email"""
         
         def _download_operation():
-            headers = self._get_request_headers()
-            url = f"https://graph.microsoft.com/v1.0/me/messages/{email_id}/attachments"
+            url = f"{RequestConfig.ENDPOINTS['graph_messages']}/{email_id}/attachments"
             
-            response = requests.get(url, headers=headers, timeout=self.request_timeout)
-            if response.status_code != 200:
-                raise Exception(f"Failed to get attachments: {response.text}")
+            response = make_authenticated_request(
+                'GET', url,
+                token_type='graph',
+                operation_type='api'
+            )
             
             attachments = response.json().get('value', [])
             target_attachment = None
@@ -216,17 +285,22 @@ class ScribeEmailProcessor:
             
             # Get attachment content
             attachment_id = target_attachment['id']
-            content_url = f"https://graph.microsoft.com/v1.0/me/messages/{email_id}/attachments/{attachment_id}/$value"
+            content_url = f"{RequestConfig.ENDPOINTS['graph_messages']}/{email_id}/attachments/{attachment_id}/$value"
             
-            content_response = requests.get(content_url, headers=headers, 
-                                          timeout=self.request_timeout)
-            if content_response.status_code != 200:
-                raise Exception(f"Failed to download attachment content: {content_response.text}")
+            content_response = make_authenticated_request(
+                'GET', content_url,
+                token_type='graph',
+                operation_type='file_transfer'
+            )
             
             return content_response.content
         
         try:
-            return retry_with_exponential_backoff(_download_operation, self.retry_config)
+            return retry_with_exponential_backoff(
+                _download_operation, 
+                RequestConfig.get_retry_for_operation('network'),
+                "download_attachment"
+            )
         except Exception as e:
             self.error_handler.handle_error(e, f"Failed to download attachment {attachment_name}")
             return None
@@ -310,10 +384,7 @@ class ScribeEmailProcessor:
     
     def _get_request_headers(self) -> Dict[str, str]:
         """Get headers for Graph API requests"""
-        return {
-            'Authorization': f'Bearer {self.access_token}',
-            'Content-Type': 'application/json'
-        }
+        return self.auth_manager.get_auth_headers('graph')
     
     def _get_time_filter(self, days_back: int) -> str:
         """Get time filter for email queries"""
