@@ -9,36 +9,63 @@ import os
 import json
 from datetime import datetime, timezone
 
-# Import production architecture components
-from src.core import (
-    ScribeConfigurationManager,
-    ScribeServiceInitializer, 
-    ScribeErrorHandler,
-    ScribeLogger
-)
-from src.processors import ScribeWorkflowProcessor
-
 app = func.FunctionApp()
 
-# Initialize production components
-logger = ScribeLogger()
-config_manager = ScribeConfigurationManager()
-error_handler = ScribeErrorHandler(logger)
-
-# Global workflow processor instance
+# Global variables for production components
+logger = None
+config_manager = None
+error_handler = None
 _workflow_processor = None
 
+def _ensure_components_initialized():
+    """Lazy initialization of production components with error handling"""
+    global logger, config_manager, error_handler, _workflow_processor
+    
+    if logger is None:
+        try:
+            # Import production architecture components
+            from src.core import (
+                ScribeConfigurationManager,
+                ScribeServiceInitializer, 
+                ScribeErrorHandler,
+                ScribeLogger
+            )
+            from src.processors import ScribeWorkflowProcessor
+            
+            # Initialize production components
+            logger = ScribeLogger()
+            config_manager = ScribeConfigurationManager()
+            error_handler = ScribeErrorHandler(logger)
+            
+            logging.info("Production components initialized successfully")
+            
+        except Exception as e:
+            # Fallback to basic logging if production components fail
+            logging.error(f"Failed to initialize production components: {str(e)}")
+            logger = logging
+            return False
+    
+    return True
 
-def get_workflow_processor() -> ScribeWorkflowProcessor:
+
+def get_workflow_processor():
     """Get or create the global workflow processor instance"""
     global _workflow_processor
+    
+    if not _ensure_components_initialized():
+        logging.error("Cannot initialize workflow processor: components failed to initialize")
+        return None
+        
     if _workflow_processor is None:
         try:
+            # Import components locally to avoid import errors at module level
+            from src.core import ScribeServiceInitializer, ScribeWorkflowOrchestrator
+            from src.processors import ScribeWorkflowProcessor
+            
             # Initialize service initializer
             service_initializer = ScribeServiceInitializer(config_manager, error_handler, logger)
             
             # Create workflow processor with all dependencies
-            from src.core import ScribeWorkflowOrchestrator
             orchestrator = ScribeWorkflowOrchestrator(config_manager, error_handler, logger)
             
             _workflow_processor = ScribeWorkflowProcessor({
@@ -53,11 +80,18 @@ def get_workflow_processor() -> ScribeWorkflowProcessor:
             if not _workflow_processor.initialize_services():
                 raise Exception("Failed to initialize Azure services")
             
-            logger.log_info("Workflow processor initialized successfully")
+            if hasattr(logger, 'log_info'):
+                logger.log_info("Workflow processor initialized successfully")
+            else:
+                logging.info("Workflow processor initialized successfully")
             
         except Exception as e:
-            error_handler.handle_error(e, "Failed to initialize workflow processor")
-            raise
+            error_msg = f"Failed to initialize workflow processor: {str(e)}"
+            if hasattr(error_handler, 'handle_error'):
+                error_handler.handle_error(e, error_msg)
+            else:
+                logging.error(error_msg)
+            return None
     
     return _workflow_processor
 
@@ -67,41 +101,80 @@ def process_voice_emails_timer(myTimer: func.TimerRequest) -> None:
     """Timer-triggered email processing every 30 minutes"""
     
     try:
+        # Initialize components first
+        if not _ensure_components_initialized():
+            logging.error("Cannot process emails: failed to initialize components")
+            return
+            
         if myTimer.past_due:
-            logger.log_warning("Timer trigger is past due")
+            if hasattr(logger, 'log_warning'):
+                logger.log_warning("Timer trigger is past due")
+            else:
+                logging.warning("Timer trigger is past due")
 
-        logger.log_info("Voice email processing started via timer trigger", {
+        log_data = {
             'trigger_type': 'timer',
             'schedule': '30_minutes',
             'timestamp': datetime.now(timezone.utc).isoformat()
-        })
+        }
+        
+        if hasattr(logger, 'log_info'):
+            logger.log_info("Voice email processing started via timer trigger", log_data)
+        else:
+            logging.info(f"Voice email processing started via timer trigger: {log_data}")
         
         # Get workflow processor and execute
         processor = get_workflow_processor()
+        if processor is None:
+            logging.error("Cannot process emails: workflow processor initialization failed")
+            return
+            
         workflow_run = processor.process_voice_emails()
         
         # Log workflow results
-        logger.log_info("Voice email processing completed", {
-            'workflow_summary': workflow_run.to_summary_dict(),
-            'trigger_type': 'timer'
-        })
-        
+        if hasattr(logger, 'log_info'):
+            logger.log_info("Voice email processing completed", {
+                'workflow_summary': workflow_run.to_summary_dict(),
+                'trigger_type': 'timer'
+            })
+        else:
+            logging.info(f"Voice email processing completed: {workflow_run.to_summary_dict()}")
+
     except Exception as e:
-        error_handler.handle_error(e, "Timer-triggered email processing failed")
-        # Re-raise to ensure Function App logs the error
+        error_msg = f"Error in timer trigger: {str(e)}"
+        if hasattr(error_handler, 'handle_error'):
+            error_handler.handle_error(e, "Timer trigger execution failed")
+        else:
+            logging.error(error_msg)
         raise
-
-
 @app.function_name(name="ProcessEmailsHTTP")
 @app.route(route="process", auth_level=func.AuthLevel.FUNCTION) 
 def process_voice_emails_http(req: func.HttpRequest) -> func.HttpResponse:
     """HTTP-triggered manual email processing"""
     
     try:
-        logger.log_info("Manual voice email processing triggered via HTTP", {
+        # Initialize components first
+        if not _ensure_components_initialized():
+            error_response = {
+                'status': 'error',
+                'message': 'Failed to initialize components',
+                'timestamp': datetime.now(timezone.utc).isoformat()
+            }
+            return func.HttpResponse(
+                json.dumps(error_response, indent=2),
+                status_code=500,
+                mimetype="application/json"
+            )
+        
+        log_data = {
             'trigger_type': 'http',
             'timestamp': datetime.now(timezone.utc).isoformat()
-        })
+        }
+        
+        if hasattr(logger, 'log_info'):
+            logger.log_info("Manual voice email processing triggered via HTTP", log_data)
+        else:
+            logging.info(f"Manual voice email processing triggered via HTTP: {log_data}")
         
         # Parse request parameters
         request_params = {}
@@ -113,6 +186,18 @@ def process_voice_emails_http(req: func.HttpRequest) -> func.HttpResponse:
         
         # Get workflow processor and execute
         processor = get_workflow_processor()
+        if processor is None:
+            error_response = {
+                'status': 'error',
+                'message': 'Failed to initialize workflow processor',
+                'timestamp': datetime.now(timezone.utc).isoformat()
+            }
+            return func.HttpResponse(
+                json.dumps(error_response, indent=2),
+                status_code=500,
+                mimetype="application/json"
+            )
+            
         workflow_run = processor.process_voice_emails()
         
         # Prepare response
@@ -123,10 +208,13 @@ def process_voice_emails_http(req: func.HttpRequest) -> func.HttpResponse:
             'timestamp': datetime.now(timezone.utc).isoformat()
         }
         
-        logger.log_info("Manual voice email processing completed", {
-            'workflow_summary': workflow_run.to_summary_dict(),
-            'trigger_type': 'http'
-        })
+        if hasattr(logger, 'log_info'):
+            logger.log_info("Manual voice email processing completed", {
+                'workflow_summary': workflow_run.to_summary_dict(),
+                'trigger_type': 'http'
+            })
+        else:
+            logging.info(f"Manual voice email processing completed: {workflow_run.to_summary_dict()}")
         
         return func.HttpResponse(
             json.dumps(response_data, indent=2),
@@ -135,7 +223,11 @@ def process_voice_emails_http(req: func.HttpRequest) -> func.HttpResponse:
         )
         
     except Exception as e:
-        error_handler.handle_error(e, "HTTP-triggered email processing failed")
+        error_msg = f"HTTP-triggered email processing failed: {str(e)}"
+        if hasattr(error_handler, 'handle_error'):
+            error_handler.handle_error(e, "HTTP-triggered email processing failed")
+        else:
+            logging.error(error_msg)
         
         error_response = {
             'status': 'error',
@@ -173,8 +265,21 @@ def health_check(req: func.HttpRequest) -> func.HttpResponse:
         except Exception:
             health_status['processor_initialized'] = False
         
-        # Check configuration
-        config_check = config_manager.validate_configuration()
+        # Check configuration only if components are available
+        config_check = True
+        try:
+            if config_manager is not None and hasattr(config_manager, 'validate_configuration'):
+                config_check = config_manager.validate_configuration()
+            else:
+                # Try to initialize just for config check
+                _ensure_components_initialized()
+                if config_manager is not None:
+                    config_check = config_manager.validate_configuration()
+                    
+        except Exception as e:
+            logging.warning(f"Configuration check failed: {str(e)}")
+            config_check = False
+            
         health_status['configuration_valid'] = config_check
         
         status_code = 200 if config_check else 503
