@@ -1,0 +1,146 @@
+# Scribe Voice Email Processor
+
+# Azure Functions specific
+bin/
+obj/
+csx/
+.vs/
+edge/
+Publish/
+.azure/
+.vscode/launch.json
+.vscode/tasks.json
+
+# Azure Functions user files
+*.user
+*.suo
+*.cscfg
+*.Cache
+project.lock.json
+
+# Package directories
+/packages
+/TestResults
+/tools/NuGet.exe
+/App_Data
+node_modules/
+dist/
+/docs
+
+# Secrets and configuration
+/secrets
+/data
+.secrets
+app-settings.json
+local.settings.json
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# OAuth tokens and credentials  
+credentials.json
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Certificate authentication files (NEVER COMMIT PRIVATE KEYS)
+certificates/
+parameters.json
+
+# Python cache and environments
+.python_packages/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Temporary files and logs
+tmp/
+temp/
+*.tmp
+*.log
+*.pid
+
+# Audio files (temporary processing)
+*.wav
+*.mp3
+*.m4a
+*.aac
+*.ogg
+*.wma
+
+# Test files
+test_output/
+test_results/
+coverage/
+.coverage
+.pytest_cache/
+.tox/
+
+# IDE files
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Documentation build
+docs/_build/
+site/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Large files
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Azurite artifacts
+__blobstorage__
+__queuestorage__
+__azurite_db*__.json

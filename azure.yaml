@@ -1,0 +1,8 @@
+name: scribe
+infra:
+  provider: bicep
+services:
+  scribe-function:
+    project: ./
+    host: function
+    language: python

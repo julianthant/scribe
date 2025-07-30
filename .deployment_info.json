@@ -1,0 +1,29 @@
+{
+  "deployment_successful": true,
+  "deployment_date": "2025-07-24T01:44:00Z",
+  "subscription_id": "66f46848-fa31-40af-9eed-f3b759e5ed15",
+  "resource_group": "scribe-personal",
+  "location": "eastus",
+  "resources": {
+    "storage_account": "scribepersonal20798",
+    "speech_service": "scribe-personal-speech",
+    "function_app": "scribe-personal-app",
+    "keyvault": "scribe-personal-vault"
+  },
+  "urls": {
+    "function_app": "https://scribe-personal-app.azurewebsites.net",
+    "keyvault": "https://scribe-personal-vault.vault.azure.net/"
+  },
+  "managed_identity": {
+    "principal_id": "85dec473-c164-4260-9ae6-fe4e2cf27573",
+    "tenant_id": "4d65b975-8618-4496-aabd-2a1d1876c28d"
+  },
+  "oauth_tokens_stored": true,
+  "rbac_configured": true,
+  "next_steps": [
+    "Deploy function code: func azure functionapp publish scribe-personal-app",
+    "Monitor function logs: az functionapp log tail --name scribe-personal-app --resource-group scribe-personal",
+    "Send test email with voice attachment",
+    "Check Excel file for results"
+  ]
+}
