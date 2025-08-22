@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(fastapi dev:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

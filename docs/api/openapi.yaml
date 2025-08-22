@@ -1,0 +1,256 @@
+openapi: 3.0.3
+info:
+  title: Scribe API
+  description: A FastAPI application with strict coding standards
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@scribeapi.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8000
+    description: Development server
+  - url: https://api.scribe.com
+    description: Production server
+
+paths:
+  /:
+    get:
+      tags:
+        - Root
+      summary: Welcome endpoint
+      description: Returns a welcome message with API information
+      responses:
+        '200':
+          description: Welcome message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WelcomeResponse'
+
+  /health:
+    get:
+      tags:
+        - Root
+      summary: Health check
+      description: Returns the health status of the API
+      responses:
+        '200':
+          description: Health status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /api/v1/items:
+    get:
+      tags:
+        - Items
+      summary: Get items
+      description: Retrieve items with pagination and optional filtering
+      parameters:
+        - name: page
+          in: query
+          description: Page number
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: size
+          in: query
+          description: Items per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: is_active
+          in: query
+          description: Filter by active status
+          required: false
+          schema:
+            type: boolean
+        - name: title_contains
+          in: query
+          description: Filter by title containing text
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Paginated list of items
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse'
+
+    post:
+      tags:
+        - Items
+      summary: Create item
+      description: Create a new item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ItemCreateRequest'
+      responses:
+        '201':
+          description: Item created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    WelcomeResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Welcome message
+        version:
+          type: string
+          description: API version
+        docs_url:
+          type: string
+          description: API documentation URL
+      required:
+        - message
+        - version
+        - docs_url
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          description: Health status
+        timestamp:
+          type: string
+          format: date-time
+          description: Check timestamp
+        version:
+          type: string
+          description: Application version
+      required:
+        - status
+        - timestamp
+        - version
+
+    ItemCreateRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Item title
+        description:
+          type: string
+          maxLength: 500
+          description: Item description
+          nullable: true
+        is_active:
+          type: boolean
+          description: Whether the item is active
+          default: true
+      required:
+        - title
+
+    ItemResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Unique item identifier
+        title:
+          type: string
+          description: Item title
+        description:
+          type: string
+          description: Item description
+          nullable: true
+        is_active:
+          type: boolean
+          description: Whether the item is active
+        created_at:
+          type: string
+          format: date-time
+          description: Item creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Item last update timestamp
+      required:
+        - id
+        - title
+        - is_active
+        - created_at
+        - updated_at
+
+    PaginatedResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemResponse'
+          description: List of items
+        total:
+          type: integer
+          description: Total number of items
+        page:
+          type: integer
+          description: Current page number
+        size:
+          type: integer
+          description: Number of items per page
+        pages:
+          type: integer
+          description: Total number of pages
+      required:
+        - items
+        - total
+        - page
+        - size
+        - pages
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error type
+        message:
+          type: string
+          description: Error message
+        error_code:
+          type: string
+          description: Machine-readable error code
+          nullable: true
+        details:
+          type: object
+          description: Additional error details
+          nullable: true
+        timestamp:
+          type: string
+          format: date-time
+          description: Error timestamp
+      required:
+        - error
+        - message
+        - timestamp
