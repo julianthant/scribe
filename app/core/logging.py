@@ -1,3 +1,19 @@
+"""
+logging.py - Application Logging Configuration
+
+Configures structured logging for the Scribe application with multiple handlers and formatters.
+This module provides:
+- Centralized logging setup with console and file handlers
+- Configurable log levels and formats
+- API request logging middleware integration
+- Function execution time tracking decorators
+- Logger factory functions
+- Request/response logging with performance metrics
+
+Logs are written to both console (for development) and app.log file (for persistence).
+The logging configuration respects the LOG_LEVEL setting from the application config.
+"""
+
 import logging
 import sys
 from functools import wraps

@@ -1,3 +1,19 @@
+"""
+main.py - FastAPI Application Entry Point
+
+This is the main application file that configures and initializes the Scribe FastAPI application.
+It sets up:
+- FastAPI application with title, description, and version
+- CORS middleware for cross-origin requests
+- Request logging middleware to track API usage
+- Global exception handlers for standardized error responses
+- Static file serving
+- API v1 router integration
+- Root endpoints for welcome and health checks
+
+The application provides a REST API for email operations with Azure AD authentication.
+"""
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse

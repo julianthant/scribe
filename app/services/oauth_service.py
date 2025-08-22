@@ -1,3 +1,21 @@
+"""
+oauth_service.py - OAuth Authentication Service
+
+Provides business logic for OAuth 2.0 authentication flow with Azure AD.
+This service handles:
+- OAuth login initiation and callback processing
+- Token exchange and validation
+- User session management and state tracking
+- Access token refresh operations
+- User information retrieval from Graph API
+- Token expiration handling
+- CSRF protection with state parameters
+- Session cleanup and logout operations
+
+The OAuthService class manages the complete OAuth lifecycle and provides
+a clean interface for authentication operations throughout the application.
+"""
+
 from typing import Optional, Dict, Any
 import logging
 import secrets

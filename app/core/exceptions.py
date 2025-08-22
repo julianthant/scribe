@@ -1,3 +1,21 @@
+"""
+exceptions.py - Custom Exception Classes
+
+Defines custom exception classes for the Scribe application with consistent error handling.
+This module provides:
+- ScribeBaseException: Base exception class with error codes and details
+- ValidationError: For input validation failures
+- NotFoundError: For missing resources
+- AuthenticationError: For authentication failures
+- AuthorizationError: For permission/access issues
+- DatabaseError: For database operation failures
+- RateLimitError: For rate limiting violations
+- ExternalServiceError: For third-party service issues
+
+All exceptions include timestamps, error codes, and optional detail dictionaries
+for structured error responses and debugging.
+"""
+
 from datetime import datetime
 from typing import Optional, Dict, Any
 
@@ -148,3 +166,85 @@ class RateLimitError(ScribeBaseException):
         details.update({"limit": limit, "window": window})
         
         super().__init__(message, error_code="RATE_LIMIT_ERROR", details=details)
+
+
+# Mail-specific exceptions
+
+class MailNotFoundException(ScribeBaseException):
+    """Raised when mail message or folder is not found."""
+    
+    def __init__(
+        self, 
+        resource_type: str,
+        message: str = "Mail resource not found",
+        resource_id: Optional[str] = None,
+        **kwargs
+    ):
+        if resource_id:
+            message = f"{resource_type} with ID {resource_id} not found"
+        else:
+            message = f"{resource_type} not found"
+            
+        details = kwargs.get("details", {})
+        details.update({"resource_type": resource_type, "resource_id": resource_id})
+        
+        super().__init__(message, error_code="MAIL_NOT_FOUND", details=details)
+
+
+class MailSendException(ScribeBaseException):
+    """Raised when mail sending fails."""
+    
+    def __init__(
+        self, 
+        message: str = "Failed to send mail",
+        recipient: Optional[str] = None,
+        subject: Optional[str] = None,
+        **kwargs
+    ):
+        details = kwargs.get("details", {})
+        if recipient:
+            details["recipient"] = recipient
+        if subject:
+            details["subject"] = subject
+            
+        super().__init__(message, error_code="MAIL_SEND_ERROR", details=details)
+
+
+class AttachmentException(ScribeBaseException):
+    """Raised when attachment operations fail."""
+    
+    def __init__(
+        self, 
+        message: str = "Attachment operation failed",
+        attachment_id: Optional[str] = None,
+        operation: Optional[str] = None,
+        **kwargs
+    ):
+        details = kwargs.get("details", {})
+        if attachment_id:
+            details["attachment_id"] = attachment_id
+        if operation:
+            details["operation"] = operation
+            
+        super().__init__(message, error_code="ATTACHMENT_ERROR", details=details)
+
+
+class MailQuotaException(ScribeBaseException):
+    """Raised when mail quota or limits are exceeded."""
+    
+    def __init__(
+        self, 
+        message: str = "Mail quota exceeded",
+        quota_type: Optional[str] = None,
+        current_usage: Optional[int] = None,
+        limit: Optional[int] = None,
+        **kwargs
+    ):
+        details = kwargs.get("details", {})
+        details.update({
+            "quota_type": quota_type,
+            "current_usage": current_usage,
+            "limit": limit
+        })
+        
+        super().__init__(message, error_code="MAIL_QUOTA_ERROR", details=details)

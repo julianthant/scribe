@@ -1,6 +1,16 @@
 """
-Authentication dependencies for FastAPI dependency injection.
-Provides functions for user authentication, token validation, and authorization.
+auth.py - Authentication Dependencies
+
+Provides FastAPI dependency injection functions for user authentication and authorization.
+This module handles:
+- get_current_user(): Validates Bearer tokens and returns authenticated user info
+- get_current_user_optional(): Optional authentication for public endpoints
+- Token validation and user information extraction
+- HTTP Bearer token scheme configuration
+- Authentication error handling and standardized responses
+
+These dependencies are used throughout the API endpoints to ensure proper authentication
+and provide consistent access to current user information.
 """
 
 from typing import Optional
@@ -100,3 +110,5 @@ def validate_token(access_token: str) -> bool:
     except Exception as e:
         logger.error(f"Token validation error: {str(e)}")
         return False
+
+

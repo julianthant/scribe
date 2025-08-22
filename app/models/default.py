@@ -1,3 +1,16 @@
+"""
+default.py - Default Response Models
+
+Defines common Pydantic models for standard API responses and system endpoints.
+This module provides:
+- ErrorResponse: Standardized error response structure with error codes and details
+- WelcomeResponse: Root endpoint welcome message with API information
+- HealthResponse: Health check endpoint response with system status
+
+These models ensure consistent response formats across all API endpoints and
+provide standardized error handling and system information responses.
+"""
+
 from datetime import datetime
 from typing import Optional, Any, Dict
 from pydantic import BaseModel, Field

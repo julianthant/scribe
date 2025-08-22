@@ -67,9 +67,8 @@ scribe/
 │   ├── conftest.py           # Pytest configuration
 │   ├── unit/                 # Unit tests
 │   │   └── __init__.py
-│   ├── integration/          # Integration tests
-│   │   └── __init__.py
-│   └── performance/          # Performance tests
+│   └── integration/          # Integration tests
+│       └── __init__.py
 ├── docs/                     # Documentation
 │   ├── api/                  # OpenAPI specifications
 │   ├── architecture/         # System design documents

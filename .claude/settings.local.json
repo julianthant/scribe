@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(fastapi dev:*)"
+      "Bash(fastapi dev:*)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__get-library-docs",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

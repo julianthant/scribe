@@ -1,3 +1,19 @@
+"""
+auth.py - Authentication API Endpoints
+
+Provides REST API endpoints for Azure AD OAuth authentication flow.
+This module handles:
+- GET /auth/login: Initiates OAuth login and returns authorization URL
+- GET /auth/callback: Handles OAuth callback and exchanges code for tokens
+- POST /auth/refresh: Refreshes access tokens using refresh tokens
+- GET /auth/status: Returns current authentication status
+- POST /auth/logout: Logs out the current user
+- GET /auth/user: Returns current user information
+
+All endpoints integrate with the OAuth service and provide standardized responses
+for authentication workflows in the frontend application.
+"""
+
 from typing import Optional
 import logging
 

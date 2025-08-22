@@ -1,3 +1,19 @@
+"""
+auth.py - Authentication Data Models
+
+Defines Pydantic models for authentication-related data structures and API responses.
+This module provides:
+- UserInfo: Azure AD user information (ID, name, email)
+- TokenResponse: OAuth token response with user info
+- AuthStatus: Current authentication status with expiration
+- LoginResponse: Login initiation response with auth URL
+- LogoutResponse: Logout confirmation response
+- RefreshTokenRequest: Token refresh request structure
+
+All models include validation, serialization, and documentation for the authentication
+API endpoints and OAuth flow integration.
+"""
+
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, Field, EmailStr

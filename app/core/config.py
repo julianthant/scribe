@@ -1,3 +1,21 @@
+"""
+config.py - Application Configuration Settings
+
+Defines the global configuration settings for the Scribe application using Pydantic BaseSettings.
+This file manages:
+- Application metadata (name, version, debug mode)
+- API configuration (versioning, prefixes)
+- Security settings (JWT tokens, secret keys)
+- Database connection settings
+- Redis cache settings
+- CORS policies
+- Logging configuration
+- Rate limiting parameters
+- Azure AD OAuth authentication settings
+
+All settings can be overridden via environment variables following Pydantic conventions.
+"""
+
 from pydantic import Field
 from pydantic_settings import BaseSettings
 from typing import Optional
@@ -43,7 +61,18 @@ class Settings(BaseSettings):
     azure_tenant_id: Optional[str] = Field(None, description="Azure AD Tenant ID")
     azure_redirect_uri: str = Field("http://localhost:8000/api/v1/auth/callback", description="OAuth redirect URI")
     azure_authority: Optional[str] = Field(None, description="Azure AD Authority URL")
-    azure_scopes: list[str] = Field(["User.Read"], description="Default OAuth scopes")
+    azure_scopes: list[str] = Field(
+        [
+            "User.Read", 
+            "Mail.Read", 
+            "Mail.ReadWrite", 
+            "Mail.Send",
+            "Mail.Read.Shared",
+            "Mail.ReadWrite.Shared",
+            "Mail.Send.Shared"
+        ], 
+        description="OAuth scopes for Graph API access including shared mailboxes"
+    )
     
     @property
     def azure_authority_url(self) -> str:
