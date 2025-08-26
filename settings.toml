@@ -1,0 +1,232 @@
+# =============================================================================
+# APPLICATION CONFIGURATION
+# =============================================================================
+# Non-sensitive configuration settings
+# Sensitive data (passwords, secrets, tokens) goes in .secrets.toml
+
+[default]
+# =============================================================================
+# CORE APPLICATION SETTINGS
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Application Metadata
+# -----------------------------------------------------------------------------
+app_name = "Scribe API"
+app_version = "1.0.0"
+debug = false
+api_v1_prefix = "/api/v1"
+
+# -----------------------------------------------------------------------------
+# Security Configuration
+# -----------------------------------------------------------------------------
+algorithm = "HS256"
+access_token_expire_minutes = 30
+
+# -----------------------------------------------------------------------------
+# Database Connection Settings
+# -----------------------------------------------------------------------------
+database_server = "scribe.database.windows.net"
+database_name = "scribev-vm-database"
+database_echo = false
+show_sql_queries = false              # Explicit flag to show SQL queries in logs
+database_pool_size = 10
+database_max_overflow = 20
+database_pool_timeout = 30
+database_pool_recycle = 3600
+database_connection_retry = 3
+
+# Azure SQL Server specific settings
+azure_database_use_access_token = true
+azure_database_enable_snapshot_isolation = true
+
+# -----------------------------------------------------------------------------
+# Row-Level Security
+# -----------------------------------------------------------------------------
+enable_rls = true
+rls_superuser_bypass = false
+rls_audit_logging = false
+
+# -----------------------------------------------------------------------------
+# Database Operations & Safety
+# -----------------------------------------------------------------------------
+database_allow_sync = false
+database_backup_path = "./backups"
+database_seed_path = "./seeds"
+database_allow_truncate = false
+database_force_cascade = false
+
+# -----------------------------------------------------------------------------
+# Database Migrations
+# -----------------------------------------------------------------------------
+alembic_config_file = "alembic.ini"
+auto_migrate_on_startup = false
+migration_timeout = 300
+migration_auto_apply = false
+migration_allow_drops = false
+migration_backup_before = false
+migration_validate_before = true
+migration_allow_empty = true
+migration_dry_run_default = false
+
+# -----------------------------------------------------------------------------
+# In-Memory Caching (Azure Functions Optimized)
+# -----------------------------------------------------------------------------
+cache_default_ttl = 300                # 5 minutes default TTL
+cache_max_size = 1000                  # Maximum cached entries
+cache_cleanup_interval = 180           # Cleanup every 3 minutes
+
+# -----------------------------------------------------------------------------
+# Multi-Tenancy & Organizations
+# -----------------------------------------------------------------------------
+default_organization_name = "Default Organization"
+enable_multi_tenant = true
+organization_isolation_strict = true
+
+# -----------------------------------------------------------------------------
+# User Roles & Access Control
+# -----------------------------------------------------------------------------
+# Superuser email addresses (users with these emails will be assigned superuser role)
+superuser_emails = []
+
+# -----------------------------------------------------------------------------
+# Cross-Origin Resource Sharing (CORS)
+# -----------------------------------------------------------------------------
+backend_cors_origins = ["*"]           # Restrictive in production
+
+# -----------------------------------------------------------------------------
+# Logging Configuration
+# -----------------------------------------------------------------------------
+log_level = "INFO"
+log_format = "json"
+log_sampling_rate = 1.0
+log_async_enabled = false
+log_max_file_size = "100MB"
+log_backup_count = 10
+log_retention_days = 30
+log_redact_sensitive = true
+log_include_request_id = true
+log_performance_threshold_ms = 10.0
+
+# -----------------------------------------------------------------------------
+# Rate Limiting
+# -----------------------------------------------------------------------------
+rate_limit_requests = 100              # Requests per window
+rate_limit_window = 60                 # Window in seconds
+
+# -----------------------------------------------------------------------------
+# Azure Active Directory OAuth
+# -----------------------------------------------------------------------------
+azure_redirect_uri = "http://localhost:8000/api/v1/auth/callback"
+azure_scopes = [
+    "User.Read",
+    "Mail.Read", 
+    "Mail.ReadWrite",
+    "Mail.Send",
+    "Mail.Read.Shared",
+    "Mail.ReadWrite.Shared", 
+    "Mail.Send.Shared"
+]
+
+# -----------------------------------------------------------------------------
+# Azure Blob Storage (Voice Attachments)
+# -----------------------------------------------------------------------------
+blob_storage_account_name = "scribevmstorage"
+blob_storage_container_name = "voice-attachments"
+blob_storage_use_access_token = true
+blob_storage_max_size_mb = 50
+blob_storage_allowed_extensions = [".mp3", ".wav", ".m4a", ".aac", ".ogg", ".amr", ".3gp", ".webm", ".flac"]
+blob_storage_default_expiry_days = 90
+blob_storage_sas_expiry_hours = 24
+blob_storage_enable_compression = false
+blob_storage_public_access = false
+
+# =============================================================================
+# DEVELOPMENT ENVIRONMENT
+# =============================================================================
+[development]
+# Development-specific overrides for local development
+
+# -----------------------------------------------------------------------------
+# Development Application Settings
+# -----------------------------------------------------------------------------
+debug = true
+log_level = "DEBUG"
+log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+database_echo = false                  # Disabled by default even in development
+show_sql_queries = false               # Set to true only when debugging SQL issues
+
+# -----------------------------------------------------------------------------
+# Development Database & Migration Settings
+# -----------------------------------------------------------------------------
+migration_allow_drops = true
+migration_backup_before = false
+database_allow_sync = true
+database_allow_truncate = true
+database_force_cascade = true
+
+# -----------------------------------------------------------------------------
+# Development CORS (Permissive for Local Development)
+# -----------------------------------------------------------------------------
+backend_cors_origins = [
+    "http://localhost:3000", 
+    "http://localhost:8000",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:8000"
+]
+
+# -----------------------------------------------------------------------------
+# Development User Roles (For Testing)
+# -----------------------------------------------------------------------------
+# Add your email here during development to test superuser functionality
+# superuser_emails = ["your-email@example.com"]
+
+# =============================================================================
+# PRODUCTION ENVIRONMENT
+# =============================================================================
+[production]
+# Production-specific overrides with enhanced security
+
+# -----------------------------------------------------------------------------
+# Production Application Settings
+# -----------------------------------------------------------------------------
+debug = false
+log_level = "INFO"
+log_format = "json"
+log_async_enabled = true
+
+# -----------------------------------------------------------------------------
+# Production Security & CORS
+# -----------------------------------------------------------------------------
+backend_cors_origins = []              # Must be configured with specific domains
+
+# -----------------------------------------------------------------------------
+# Production Database & Migration Settings (Extra Safety)
+# -----------------------------------------------------------------------------
+migration_allow_drops = false
+migration_backup_before = true
+migration_validate_before = true
+migration_dry_run_default = true
+database_allow_sync = false
+database_allow_truncate = false
+database_force_cascade = false
+
+# =============================================================================
+# TESTING ENVIRONMENT
+# =============================================================================
+[testing]
+# Testing-specific overrides for automated testing
+
+# -----------------------------------------------------------------------------
+# Testing Application Settings
+# -----------------------------------------------------------------------------
+debug = true
+log_level = "WARNING"
+cache_max_size = 100                   # Smaller cache for tests
+
+# -----------------------------------------------------------------------------
+# Testing Database Settings
+# -----------------------------------------------------------------------------
+database_echo = false
+migration_allow_drops = true
+database_allow_truncate = true

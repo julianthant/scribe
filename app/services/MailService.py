@@ -20,9 +20,9 @@ from typing import List, Optional, Dict, Any, Tuple
 import logging
 from datetime import datetime
 
-from app.repositories.mail_repository import MailRepository
-from app.core.exceptions import AuthenticationError, ValidationError
-from app.models.mail import (
+from app.repositories.MailRepository import MailRepository
+from app.core.Exceptions import AuthenticationError, ValidationError
+from app.models.MailModel import (
     MailFolder, Message, MessageListResponse, Attachment,
     FileAttachment, VoiceAttachment, FolderStatistics,
     CreateFolderRequest, MoveMessageRequest, UpdateMessageRequest,
@@ -122,7 +122,7 @@ class MailService:
                     return folder
 
             # Create new folder if not found
-            request = CreateFolderRequest(displayName=name)
+            request = CreateFolderRequest(displayName=name, parentFolderId=None)
             folder = await self.create_mail_folder(request)
             logger.info(f"Created new folder: {folder.displayName}")
             return folder
@@ -253,7 +253,10 @@ class MailService:
                                     attachmentId=attachment.id,
                                     name=attachment.name,
                                     contentType=attachment.contentType or "",
-                                    size=attachment.size
+                                    size=attachment.size,
+                                    duration=None,
+                                    sampleRate=None,
+                                    bitRate=None
                                 )
                                 message_voice_attachments.append(voice_attachment)
                                 voice_attachments.append(voice_attachment)
@@ -269,11 +272,13 @@ class MailService:
                         continue
 
             # Create response with only voice messages
-            voice_message_response = MessageListResponse(
-                value=voice_messages,
-                odata_nextLink=messages.odata_nextLink,
-                odata_count=len(voice_messages)
-            )
+            # Create response dict with proper field names for aliases
+            response_dict = {
+                "value": voice_messages,
+                "@odata.nextLink": messages.odata_nextLink,
+                "@odata.count": len(voice_messages)
+            }
+            voice_message_response = MessageListResponse.model_validate(response_dict)
 
             logger.info(f"Found {len(voice_messages)} messages with {len(voice_attachments)} voice attachments")
             return voice_message_response, voice_attachments
@@ -305,7 +310,10 @@ class MailService:
                         attachmentId=attachment.id,
                         name=attachment.name,
                         contentType=attachment.contentType or "",
-                        size=attachment.size
+                        size=attachment.size,
+                        duration=None,
+                        sampleRate=None,
+                        bitRate=None
                     )
                     voice_attachments.append(voice_attachment)
 

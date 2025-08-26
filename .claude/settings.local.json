@@ -4,7 +4,15 @@
       "Bash(fastapi dev:*)",
       "mcp__context7__resolve-library-id",
       "mcp__context7__get-library-docs",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Read(/C:\\Users\\Julian\\Projects\\test\\scribe\\app\\db/**)",
+      "Read(/C:\\Users\\Julian\\Projects\\test\\scribe\\app\\db/**)",
+      "Read(/C:\\Users\\Julian\\Projects\\test\\scribe\\app\\db/**)",
+      "Bash(mypy:*)",
+      "Bash(python:*)",
+      "Read(/C:\\c\\Users\\Julian\\Projects/**)",
+      "Bash(alembic stamp:*)",
+      "Bash(alembic revision:*)"
     ],
     "deny": [],
     "ask": []

@@ -18,9 +18,9 @@ for the mail service layer to perform email operations.
 from typing import List, Optional, Dict, Any
 import logging
 
-from app.core.azure_auth import azure_auth_client
-from app.core.exceptions import AuthenticationError, AuthorizationError
-from app.models.mail import (
+from app.azure.AzureGraphService import azure_graph_service
+from app.core.Exceptions import AuthenticationError, AuthorizationError
+from app.models.MailModel import (
     MailFolder, Message, MessageListResponse, Attachment,
     FileAttachment, ItemAttachment, ReferenceAttachment
 )
@@ -45,7 +45,7 @@ class MailRepository:
             AuthenticationError: If API call fails
         """
         try:
-            folders_data = await azure_auth_client.get_mail_folders(self.access_token)
+            folders_data = await azure_graph_service.get_mail_folders(self.access_token)
             
             folders = []
             for folder_data in folders_data.get("value", []):
@@ -90,7 +90,7 @@ class MailRepository:
             if parent_id:
                 folder_data["parentFolderId"] = parent_id
 
-            created_folder_data = await azure_auth_client.create_mail_folder(
+            created_folder_data = await azure_graph_service.create_mail_folder(
                 self.access_token, folder_data
             )
             
@@ -134,13 +134,13 @@ class MailRepository:
             AuthenticationError: If API call fails
         """
         try:
-            filter_params = {
+            filter_params: dict[str, int | str] = {
                 "top": top,
                 "skip": skip
             }
 
             if select:
-                filter_params["select"] = select
+                filter_params["select"] = ",".join(select)
 
             # Build OData filter
             filters = []
@@ -153,7 +153,7 @@ class MailRepository:
             else:
                 filter_params["orderby"] = orderby
 
-            messages_data = await azure_auth_client.get_messages(
+            messages_data = await azure_graph_service.get_messages(
                 self.access_token, folder_id, filter_params
             )
 
@@ -164,8 +164,8 @@ class MailRepository:
 
             return MessageListResponse(
                 value=messages,
-                odata_nextLink=messages_data.get("@odata.nextLink"),
-                odata_count=messages_data.get("@odata.count")
+                **{"@odata.nextLink": messages_data.get("@odata.nextLink")},
+                **{"@odata.count": messages_data.get("@odata.count")}
             )
 
         except Exception as e:
@@ -186,12 +186,12 @@ class MailRepository:
         """
         try:
             # Get single message by using filter with top=1
-            filter_params = {
+            filter_params: dict[str, int | str] = {
                 "top": 1,
                 "filter": f"id eq '{message_id}'"
             }
 
-            messages_data = await azure_auth_client.get_messages(
+            messages_data = await azure_graph_service.get_messages(
                 self.access_token, None, filter_params
             )
 
@@ -218,7 +218,7 @@ class MailRepository:
             AuthenticationError: If API call fails
         """
         try:
-            attachments_data = await azure_auth_client.get_message_attachments(
+            attachments_data = await azure_graph_service.get_message_attachments(
                 self.access_token, message_id
             )
 
@@ -252,7 +252,7 @@ class MailRepository:
             AuthenticationError: If API call fails
         """
         try:
-            return await azure_auth_client.download_attachment(
+            return await azure_graph_service.download_attachment(
                 self.access_token, message_id, attachment_id
             )
 
@@ -274,7 +274,7 @@ class MailRepository:
             AuthenticationError: If API call fails
         """
         try:
-            await azure_auth_client.move_message(
+            await azure_graph_service.move_message(
                 self.access_token, message_id, destination_folder_id
             )
             return True
@@ -298,7 +298,7 @@ class MailRepository:
         """
         try:
             updates = {"isRead": is_read}
-            await azure_auth_client.update_message(
+            await azure_graph_service.update_message(
                 self.access_token, message_id, updates
             )
             return True
@@ -331,7 +331,7 @@ class MailRepository:
             AuthenticationError: If API call fails
         """
         try:
-            filter_params = {
+            filter_params: dict[str, int | str] = {
                 "top": top,
                 "skip": skip
             }
@@ -348,7 +348,7 @@ class MailRepository:
             if has_attachments is None:
                 filter_params["orderby"] = "receivedDateTime DESC"
 
-            messages_data = await azure_auth_client.get_messages(
+            messages_data = await azure_graph_service.get_messages(
                 self.access_token, folder_id, filter_params
             )
 
@@ -359,8 +359,8 @@ class MailRepository:
 
             return MessageListResponse(
                 value=messages,
-                odata_nextLink=messages_data.get("@odata.nextLink"),
-                odata_count=messages_data.get("@odata.count")
+                **{"@odata.nextLink": messages_data.get("@odata.nextLink")},
+                **{"@odata.count": messages_data.get("@odata.count")}
             )
 
         except Exception as e:
@@ -382,7 +382,7 @@ class MailRepository:
         def parse_recipients(recipients_data):
             recipients = []
             for recipient_data in recipients_data or []:
-                from app.models.mail import Recipient, EmailAddress
+                from app.models.MailModel import Recipient, EmailAddress
                 recipient = Recipient(
                     emailAddress=EmailAddress(
                         name=recipient_data["emailAddress"].get("name", ""),
@@ -404,7 +404,7 @@ class MailRepository:
         # Parse body
         body = None
         if message_data.get("body"):
-            from app.models.mail import ItemBody, BodyType
+            from app.models.MailModel import ItemBody, BodyType
             body = ItemBody(
                 contentType=BodyType(message_data["body"]["contentType"]),
                 content=message_data["body"]["content"]
@@ -413,7 +413,7 @@ class MailRepository:
         # Parse sender
         sender = None
         if message_data.get("sender"):
-            from app.models.mail import Recipient, EmailAddress
+            from app.models.MailModel import Recipient, EmailAddress
             sender = Recipient(
                 emailAddress=EmailAddress(
                     name=message_data["sender"]["emailAddress"].get("name", ""),
@@ -424,7 +424,7 @@ class MailRepository:
         # Parse from
         from_ = None
         if message_data.get("from"):
-            from app.models.mail import Recipient, EmailAddress
+            from app.models.MailModel import Recipient, EmailAddress
             from_ = Recipient(
                 emailAddress=EmailAddress(
                     name=message_data["from"]["emailAddress"].get("name", ""),
@@ -432,7 +432,7 @@ class MailRepository:
                 )
             )
 
-        from app.models.mail import Importance
+        from app.models.MailModel import Importance
         importance = Importance.NORMAL
         if message_data.get("importance"):
             try:
@@ -440,29 +440,32 @@ class MailRepository:
             except ValueError:
                 importance = Importance.NORMAL
 
-        return Message(
-            id=message_data["id"],
-            subject=message_data.get("subject", ""),
-            body=body,
-            bodyPreview=message_data.get("bodyPreview", ""),
-            sender=sender,
-            from_=from_,
-            toRecipients=parse_recipients(message_data.get("toRecipients")),
-            ccRecipients=parse_recipients(message_data.get("ccRecipients")),
-            bccRecipients=parse_recipients(message_data.get("bccRecipients")),
-            receivedDateTime=parse_datetime(message_data.get("receivedDateTime")),
-            sentDateTime=parse_datetime(message_data.get("sentDateTime")),
-            createdDateTime=parse_datetime(message_data.get("createdDateTime")),
-            lastModifiedDateTime=parse_datetime(message_data.get("lastModifiedDateTime")),
-            hasAttachments=message_data.get("hasAttachments", False),
-            importance=importance,
-            isRead=message_data.get("isRead", False),
-            isDraft=message_data.get("isDraft", False),
-            parentFolderId=message_data.get("parentFolderId"),
-            conversationId=message_data.get("conversationId"),
-            internetMessageId=message_data.get("internetMessageId"),
-            webLink=message_data.get("webLink")
-        )
+        # Create message data dict with proper field names
+        message_dict = {
+            "id": message_data["id"],
+            "subject": message_data.get("subject", ""),
+            "body": body,
+            "bodyPreview": message_data.get("bodyPreview", ""),
+            "sender": sender,
+            "from": from_,  # Use the alias name directly
+            "toRecipients": parse_recipients(message_data.get("toRecipients")),
+            "ccRecipients": parse_recipients(message_data.get("ccRecipients")),
+            "bccRecipients": parse_recipients(message_data.get("bccRecipients")),
+            "receivedDateTime": parse_datetime(message_data.get("receivedDateTime")),
+            "sentDateTime": parse_datetime(message_data.get("sentDateTime")),
+            "createdDateTime": parse_datetime(message_data.get("createdDateTime")),
+            "lastModifiedDateTime": parse_datetime(message_data.get("lastModifiedDateTime")),
+            "hasAttachments": message_data.get("hasAttachments", False),
+            "importance": importance,
+            "isRead": message_data.get("isRead", False),
+            "isDraft": message_data.get("isDraft", False),
+            "parentFolderId": message_data.get("parentFolderId"),
+            "conversationId": message_data.get("conversationId"),
+            "internetMessageId": message_data.get("internetMessageId"),
+            "webLink": message_data.get("webLink")
+        }
+        
+        return Message.model_validate(message_dict)
 
     def _parse_attachment_data(self, attachment_data: Dict[str, Any]) -> Attachment:
         """Parse attachment data from Graph API response.

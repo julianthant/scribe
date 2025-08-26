@@ -1,93 +1,100 @@
 """
 config.py - Application Configuration Settings
 
-Defines the global configuration settings for the Scribe application using Pydantic BaseSettings.
+Defines the global configuration settings for the Scribe application using Dynaconf.
 This file manages:
 - Application metadata (name, version, debug mode)
 - API configuration (versioning, prefixes)
 - Security settings (JWT tokens, secret keys)
-- Database connection settings
-- Redis cache settings
+- In-memory cache settings
 - CORS policies
 - Logging configuration
 - Rate limiting parameters
 - Azure AD OAuth authentication settings
 
-All settings can be overridden via environment variables following Pydantic conventions.
+Configuration follows Dynaconf best practices:
+- Non-sensitive settings in settings.toml
+- Sensitive settings in .secrets.toml (gitignored)
+- Environment variables override file settings with SCRIBE_ prefix
+- Environment-specific configuration sections [development], [production], [testing]
 """
 
-from pydantic import Field
-from pydantic_settings import BaseSettings
-from typing import Optional
+from dynaconf import Dynaconf  # type: ignore[import-untyped]
+from typing import List, Optional
 
 
-class Settings(BaseSettings):
-    """Application settings and configuration."""
+# Initialize Dynaconf with proper TOML-based configuration
+settings = Dynaconf(
+    # Enable environment-specific configuration sections
+    environments=True,
     
-    # Application settings
-    app_name: str = "Scribe API"
-    app_version: str = "1.0.0"
-    debug: bool = False
+    # Load configuration files in order (later files override earlier ones)
+    settings_files=["settings.toml", ".secrets.toml"],
     
-    # API settings
-    api_v1_prefix: str = "/api/v1"
+    # Environment variable prefix for overrides
+    envvar_prefix="SCRIBE",
     
-    # Security settings
-    secret_key: str = Field(..., description="Secret key for JWT tokens")
-    algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
+    # Load .env file for environment switching
+    load_dotenv=True,
     
-    # Database settings
-    database_url: Optional[str] = Field(None, description="Database connection URL")
-    database_echo: bool = False
+    # Enable merging of nested dictionaries and lists
+    merge_enabled=True,
     
-    # Redis settings
-    redis_url: Optional[str] = Field(None, description="Redis connection URL")
+    # Environment switcher variable (set ENV_FOR_DYNACONF=production to switch)
+    env_switcher="ENV_FOR_DYNACONF",
     
-    # CORS settings
-    backend_cors_origins: list[str] = ["*"]
+    # Default environment if not specified
+    env="development"
+)
+
+def get_azure_authority_url() -> str:
+    """
+    Get the full Azure authority URL for OAuth authentication.
     
-    # Logging settings
-    log_level: str = "INFO"
-    log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    
-    # Rate limiting
-    rate_limit_requests: int = 100
-    rate_limit_window: int = 60  # seconds
-    
-    # Azure AD OAuth settings
-    azure_client_id: Optional[str] = Field(None, description="Azure AD Client ID")
-    azure_client_secret: Optional[str] = Field(None, description="Azure AD Client Secret")
-    azure_tenant_id: Optional[str] = Field(None, description="Azure AD Tenant ID")
-    azure_redirect_uri: str = Field("http://localhost:8000/api/v1/auth/callback", description="OAuth redirect URI")
-    azure_authority: Optional[str] = Field(None, description="Azure AD Authority URL")
-    azure_scopes: list[str] = Field(
-        [
-            "User.Read", 
-            "Mail.Read", 
-            "Mail.ReadWrite", 
-            "Mail.Send",
-            "Mail.Read.Shared",
-            "Mail.ReadWrite.Shared",
-            "Mail.Send.Shared"
-        ], 
-        description="OAuth scopes for Graph API access including shared mailboxes"
-    )
-    
-    @property
-    def azure_authority_url(self) -> str:
-        """Get the full Azure authority URL."""
-        if self.azure_authority:
-            return self.azure_authority
-        if self.azure_tenant_id:
-            return f"https://login.microsoftonline.com/{self.azure_tenant_id}"
-        return "https://login.microsoftonline.com/common"
-    
-    model_config = {
-        "env_file": ".env",
-        "case_sensitive": False,
-        "env_file_encoding": "utf-8"
-    }
+    Returns:
+        Azure AD authority URL
+    """
+    if settings.get("azure_authority"):
+        return settings.azure_authority
+    if settings.get("azure_tenant_id"):
+        return f"https://login.microsoftonline.com/{settings.azure_tenant_id}"
+    return "https://login.microsoftonline.com/common"
 
 
-settings = Settings()
+
+def validate_required_settings():
+    """
+    Validate that all required settings are present.
+    
+    Raises:
+        ValueError: If required settings are missing
+    """
+    required_settings = [
+        ("secret_key", "Secret key for JWT token signing"),
+        ("jwt_secret", "JWT secret for token generation"),
+    ]
+    
+    missing_settings = []
+    for setting, description in required_settings:
+        if not settings.get(setting):
+            missing_settings.append(f"{setting} ({description})")
+    
+    if missing_settings:
+        raise ValueError(
+            f"Missing required settings:\n" + 
+            "\n".join(f"  - {setting}" for setting in missing_settings) +
+            f"\n\nSet these via environment variables with SCRIBE_ prefix or in .secrets.toml file."
+        )
+
+
+# Add computed properties to settings object
+settings.azure_authority_url_computed = get_azure_authority_url
+
+
+# Environment-specific validation and setup
+if settings.current_env == "production":
+    # Additional production validations
+    if not settings.get("azure_client_secret"):
+        raise ValueError("azure_client_secret must be set in production environment")
+    if settings.debug:
+        raise ValueError("Debug mode should not be enabled in production")

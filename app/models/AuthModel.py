@@ -18,6 +18,8 @@ from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, Field, EmailStr
 
+from app.db.models.User import UserRole
+
 
 class UserInfo(BaseModel):
     """User information from Azure AD."""
@@ -26,6 +28,8 @@ class UserInfo(BaseModel):
     email: EmailStr = Field(..., description="User's email address")
     given_name: str = Field("", description="User's first name")
     surname: str = Field("", description="User's last name")
+    role: UserRole = Field(UserRole.USER, description="User's role in the system")
+    is_superuser: bool = Field(False, description="Whether user has superuser privileges")
 
 
 class TokenResponse(BaseModel):
@@ -36,6 +40,7 @@ class TokenResponse(BaseModel):
     expires_in: int = Field(..., description="Token expiration time in seconds")
     scope: str = Field("", description="Token scope")
     user_info: UserInfo = Field(..., description="Authenticated user information")
+    session_id: Optional[str] = Field(None, description="Database session ID")
 
 
 class AuthStatus(BaseModel):
@@ -60,3 +65,4 @@ class LogoutResponse(BaseModel):
 class RefreshTokenRequest(BaseModel):
     """Request to refresh access token."""
     refresh_token: str = Field(..., description="Valid refresh token")
+    session_id: Optional[str] = Field(None, description="Database session ID")

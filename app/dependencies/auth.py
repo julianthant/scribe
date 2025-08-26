@@ -18,10 +18,13 @@ import logging
 
 from fastapi import HTTPException, Depends, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.oauth_service import oauth_service
-from app.models.auth import UserInfo
-from app.core.exceptions import AuthenticationError
+from app.services.OAuthService import oauth_service
+from app.models.AuthModel import UserInfo
+from app.core.Exceptions import AuthenticationError
+from app.db.Database import get_async_db
+from app.repositories.UserRepository import UserRepository
 
 logger = logging.getLogger(__name__)
 
@@ -110,5 +113,19 @@ def validate_token(access_token: str) -> bool:
     except Exception as e:
         logger.error(f"Token validation error: {str(e)}")
         return False
+
+
+async def get_user_repository(
+    db_session: AsyncSession = Depends(get_async_db)
+) -> UserRepository:
+    """Get UserRepository instance with database session.
+    
+    Args:
+        db_session: Async database session
+        
+    Returns:
+        UserRepository: Repository instance for user operations
+    """
+    return UserRepository(db_session)
 
 

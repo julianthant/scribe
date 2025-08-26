@@ -97,6 +97,7 @@ celerybeat.pid
 
 # Environments
 .env
+.secrets.toml
 .venv
 env/
 venv/
@@ -125,3 +126,99 @@ dmypy.json
 # Application specific
 *.log
 logs/
+app.log
+
+# Database and Migration files
+*.db
+*.sqlite
+*.sqlite3
+backup_*.sql
+alembic/versions/*.pyc
+migrations/
+backups/
+seeds/
+
+# Configuration and Secrets
+.secrets.toml
+settings.local.toml
+config.local.py
+local_settings.py
+.env.local
+.env.production
+
+# Azure and Cloud specific
+.azure/
+azure.log
+azure_credentials.json
+client_secret_*.json
+
+# Redis and Cache
+dump.rdb
+redis.log
+cache/
+*.rdb
+
+# Testing artifacts
+.coverage.*
+coverage/
+htmlcov/
+.pytest_cache/
+test-reports/
+test_results.xml
+test_coverage.xml
+.test_cache/
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Development tools
+.mypy_cache/
+.pylint.d/
+.bandit
+.flake8
+pylint-report.txt
+
+# Documentation builds
+docs/_build/
+docs/build/
+site/
+
+# Temporary and backup files
+*.tmp
+*.temp
+*.bak
+*.backup
+*_backup.*
+.backup/
+
+# OS specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Static files and uploads (if generated)
+static/uploads/
+static/temp/
+uploads/
+media/
+
+# Performance and monitoring
+*.prof
+*.profile
+profiling/
+
+# Jupyter and development notebooks
+*.ipynb_checkpoints/
+notebooks/scratch/

@@ -13,10 +13,10 @@ The router is included in the main FastAPI application with the /api/v1 prefix.
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, mail, shared_mailbox
+from app.api.v1.endpoints import auth, mail, SharedMailbox
 
 router = APIRouter()
 
 router.include_router(auth.router)
 router.include_router(mail.router)
-router.include_router(shared_mailbox.router)
+router.include_router(SharedMailbox.router)

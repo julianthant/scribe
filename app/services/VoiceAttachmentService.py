@@ -23,15 +23,17 @@ import io
 from pathlib import Path
 from datetime import datetime
 
-from app.services.mail_service import MailService
-from app.repositories.mail_repository import MailRepository
-from app.repositories.shared_mailbox_repository import SharedMailboxRepository
-from app.core.exceptions import ValidationError, AuthenticationError
-from app.models.mail import (
+from app.services.MailService import MailService
+from app.repositories.MailRepository import MailRepository
+from app.repositories.SharedMailboxRepository import SharedMailboxRepository
+from app.repositories.VoiceAttachmentRepository import VoiceAttachmentRepository
+from app.azure.AzureBlobService import AzureBlobService
+from app.core.Exceptions import ValidationError, AuthenticationError
+from app.models.MailModel import (
     VoiceAttachment, Message, Attachment, FileAttachment,
     OrganizeVoiceResponse, FolderStatistics
 )
-from app.models.shared_mailbox import (
+from app.models.SharedMailboxModel import (
     SharedMailboxMessage, OrganizeSharedMailboxResponse
 )
 
@@ -81,6 +83,8 @@ class VoiceAttachmentService:
         self, 
         mail_service: MailService, 
         mail_repository: MailRepository,
+        voice_attachment_repository: VoiceAttachmentRepository,
+        blob_service: AzureBlobService,
         shared_mailbox_repository: Optional[SharedMailboxRepository] = None
     ):
         """Initialize voice attachment service.
@@ -88,10 +92,14 @@ class VoiceAttachmentService:
         Args:
             mail_service: Mail service instance
             mail_repository: Mail repository instance
+            voice_attachment_repository: Voice attachment repository instance
+            blob_service: Azure blob storage service instance
             shared_mailbox_repository: Optional shared mailbox repository instance
         """
         self.mail_service = mail_service
         self.mail_repository = mail_repository
+        self.voice_attachment_repository = voice_attachment_repository
+        self.blob_service = blob_service
         self.shared_mailbox_repository = shared_mailbox_repository
 
     async def find_all_voice_messages(
@@ -150,7 +158,10 @@ class VoiceAttachmentService:
                         attachmentId=attachment.id,
                         name=attachment.name,
                         contentType=attachment.contentType or "unknown",
-                        size=attachment.size
+                        size=attachment.size,
+                        duration=None,
+                        sampleRate=None,
+                        bitRate=None
                     )
                     
                     # Try to extract additional metadata
@@ -350,8 +361,8 @@ class VoiceAttachmentService:
             
             # Analyze voice attachments
             total_voice_attachments = 0
-            content_type_counts = {}
-            extension_counts = {}
+            content_type_counts: dict[str, int] = {}
+            extension_counts: dict[str, int] = {}
             total_voice_size = 0
             duration_total = 0.0
             duration_count = 0
@@ -462,7 +473,7 @@ class VoiceAttachmentService:
         Returns:
             Dictionary with extracted metadata
         """
-        metadata = {}
+        metadata: dict[str, str | float | int] = {}
         
         # Basic content type analysis
         if attachment.contentType:
@@ -543,6 +554,423 @@ class VoiceAttachmentService:
         }
         
         return format_map.get(ext, f'{ext.upper()} Audio')
+
+    # Blob Storage Methods
+
+    async def store_voice_attachment_in_blob(
+        self,
+        message_id: str,
+        attachment_id: str,
+        user_id: str,
+        sender_name: Optional[str] = None,
+        subject: Optional[str] = None,
+        received_at: Optional[datetime] = None
+    ) -> str:
+        """Download voice attachment from Graph API and store in blob storage.
+        
+        Args:
+            message_id: Graph API message ID
+            attachment_id: Graph API attachment ID
+            user_id: User storing the attachment
+            sender_name: Optional sender name
+            subject: Optional email subject
+            received_at: Optional received timestamp
+            
+        Returns:
+            Blob name of stored attachment
+            
+        Raises:
+            ValidationError: If attachment validation fails
+            AuthenticationError: If storage fails
+        """
+        try:
+            # Check if already stored
+            existing = await self.voice_attachment_repository.get_by_graph_api_ids(
+                user_id, message_id, attachment_id
+            )
+            if existing and existing.storage_status == "stored":
+                logger.info(f"Voice attachment already stored: {existing.blob_name}")
+                return existing.blob_name
+            
+            # Get attachment metadata
+            attachments = await self.mail_repository.get_attachments(message_id)
+            target_attachment = None
+            
+            for attachment in attachments:
+                if attachment.id == attachment_id:
+                    target_attachment = attachment
+                    break
+            
+            if not target_attachment:
+                raise ValidationError("Attachment not found")
+            
+            if not self.is_voice_attachment(target_attachment):
+                raise ValidationError("Attachment is not a voice/audio file")
+            
+            # Download attachment content from Graph API
+            content = await self.mail_repository.download_attachment(message_id, attachment_id)
+            
+            # Generate blob name
+            blob_name = self.blob_service.generate_blob_name(
+                message_id=message_id,
+                attachment_id=attachment_id,
+                original_filename=target_attachment.name,
+                user_id=user_id
+            )
+            
+            # Get container name from settings
+            container_name = getattr(self.blob_service.settings, 'blob_storage_container_name', 'voice-attachments')
+            
+            # Prepare metadata
+            metadata = {
+                "user_id": user_id,
+                "message_id": message_id,
+                "attachment_id": attachment_id,
+                "original_filename": target_attachment.name or "",
+                "sender_name": sender_name or "",
+                "subject": subject or ""
+            }
+            
+            # Upload to blob storage
+            blob_url = await self.blob_service.upload_voice_attachment(
+                content=content,
+                blob_name=blob_name,
+                content_type=target_attachment.contentType or "audio/mpeg",
+                metadata=metadata
+            )
+            
+            # Get additional metadata for database
+            message = await self.mail_repository.get_message_by_id(message_id)
+            
+            # Store metadata in database
+            voice_attachment = await self.voice_attachment_repository.create_voice_attachment(
+                user_id=user_id,
+                azure_message_id=message_id,
+                azure_attachment_id=attachment_id,
+                blob_name=blob_name,
+                blob_container=container_name,
+                original_filename=target_attachment.name or f"attachment_{attachment_id}",
+                content_type=target_attachment.contentType or "audio/mpeg",
+                size_bytes=target_attachment.size,
+                sender_email=message.from_.emailAddress.address if message.from_ else "",
+                subject=message.subject if message else subject or "Unknown",
+                received_at=message.receivedDateTime if message else received_at or datetime.utcnow(),
+                blob_url=blob_url,
+                sender_name=sender_name or (message.from_.name if message and message.from_ else ""),
+            )
+            
+            logger.info(f"Stored voice attachment in blob: {blob_name} ({len(content)} bytes)")
+            return blob_name
+            
+        except (ValidationError, AuthenticationError):
+            raise
+        except Exception as e:
+            logger.error(f"Failed to store voice attachment in blob: {str(e)}")
+            raise AuthenticationError(f"Failed to store voice attachment: {str(e)}")
+    
+    async def download_voice_attachment_from_blob(
+        self,
+        blob_name: str,
+        user_id: str,
+        client_ip: Optional[str] = None,
+        user_agent: Optional[str] = None
+    ) -> Tuple[bytes, Dict[str, Any]]:
+        """Download voice attachment from blob storage.
+        
+        Args:
+            blob_name: Blob storage name
+            user_id: User requesting download
+            client_ip: Optional client IP for tracking
+            user_agent: Optional user agent for tracking
+            
+        Returns:
+            Tuple of (content bytes, metadata dict)
+            
+        Raises:
+            ValidationError: If blob not found
+            AuthenticationError: If download fails
+        """
+        try:
+            start_time = datetime.utcnow()
+            
+            # Get voice attachment metadata from database
+            voice_attachment = await self.voice_attachment_repository.get_by_blob_name(
+                blob_name, user_id
+            )
+            if not voice_attachment:
+                raise ValidationError(
+                    f"Voice attachment {blob_name} not found or not accessible",
+                    error_code="VOICE_ATTACHMENT_NOT_FOUND"
+                )
+            
+            # Check if user has access (must be the owner)
+            if voice_attachment.user_id != user_id:
+                raise ValidationError(
+                    "Access denied: You can only download your own voice attachments",
+                    error_code="ACCESS_DENIED"
+                )
+            
+            # Download from blob storage
+            content = await self.blob_service.download_voice_attachment(blob_name)
+            
+            # Calculate download duration
+            download_duration = (datetime.utcnow() - start_time).total_seconds() * 1000
+            
+            # Record download in database
+            await self.voice_attachment_repository.record_download(
+                attachment_id=voice_attachment.id,
+                user_id=user_id,
+                download_method="blob_stream",
+                download_size_bytes=len(content),
+                client_ip=client_ip,
+                user_agent=user_agent,
+                download_duration_ms=int(download_duration),
+                success=True
+            )
+            
+            # Prepare metadata for response
+            metadata = {
+                "filename": voice_attachment.original_filename,
+                "content_type": voice_attachment.content_type,
+                "size": len(content),
+                "received_at": voice_attachment.received_at.isoformat(),
+                "sender_email": voice_attachment.sender_email,
+                "sender_name": voice_attachment.sender_name,
+                "subject": voice_attachment.subject,
+                "download_count": voice_attachment.download_count + 1  # Updated count
+            }
+            
+            return content, metadata
+            
+        except (ValidationError, AuthenticationError):
+            raise
+        except Exception as e:
+            logger.error(f"Failed to download voice attachment from blob: {str(e)}")
+            raise AuthenticationError(f"Failed to download voice attachment: {str(e)}")
+    
+    async def list_stored_voice_attachments(
+        self,
+        user_id: str,
+        limit: int = 50,
+        offset: int = 0,
+        content_type_filter: Optional[str] = None,
+        order_by: str = "received_at"
+    ) -> Tuple[List[Dict[str, Any]], int]:
+        """List stored voice attachments for a user.
+        
+        Args:
+            user_id: User ID
+            limit: Maximum results to return
+            offset: Number of results to skip
+            content_type_filter: Optional content type filter
+            order_by: Field to order by
+            
+        Returns:
+            Tuple of (attachment list, total count)
+        """
+        try:
+            attachments, total_count = await self.voice_attachment_repository.list_user_attachments(
+                user_id=user_id,
+                limit=limit,
+                offset=offset,
+                status_filter="stored",
+                content_type_filter=content_type_filter,
+                order_by=order_by,
+                order_direction="desc"
+            )
+            
+            # Convert to response format
+            attachment_list = []
+            for attachment in attachments:
+                attachment_dict = {
+                    "id": attachment.id,
+                    "blob_name": attachment.blob_name,
+                    "original_filename": attachment.original_filename,
+                    "content_type": attachment.content_type,
+                    "size_bytes": attachment.size_bytes,
+                    "size_mb": round(attachment.size_bytes / (1024 * 1024), 2),
+                    "duration_seconds": attachment.duration_seconds,
+                    "sender_email": attachment.sender_email,
+                    "sender_name": attachment.sender_name,
+                    "subject": attachment.subject,
+                    "received_at": attachment.received_at.isoformat(),
+                    "stored_at": attachment.created_at.isoformat(),
+                    "download_count": attachment.download_count,
+                    "last_downloaded_at": attachment.last_downloaded_at.isoformat() if attachment.last_downloaded_at else None,
+                    "expires_at": attachment.expires_at.isoformat() if attachment.expires_at else None
+                }
+                attachment_list.append(attachment_dict)
+            
+            logger.info(f"Listed {len(attachment_list)} stored voice attachments for user {user_id}")
+            return attachment_list, total_count
+            
+        except Exception as e:
+            logger.error(f"Failed to list stored voice attachments: {str(e)}")
+            raise AuthenticationError(f"Failed to list stored voice attachments: {str(e)}")
+    
+    async def delete_stored_voice_attachment(
+        self,
+        blob_name: str,
+        user_id: str
+    ) -> bool:
+        """Delete stored voice attachment from blob storage and database.
+        
+        Args:
+            blob_name: Blob storage name
+            user_id: User requesting deletion
+            
+        Returns:
+            True if successful
+            
+        Raises:
+            ValidationError: If attachment not found
+            AuthenticationError: If deletion fails
+        """
+        try:
+            # Get voice attachment metadata from database
+            voice_attachment = await self.voice_attachment_repository.get_by_blob_name(
+                blob_name, user_id
+            )
+            if not voice_attachment:
+                raise ValidationError(
+                    f"Voice attachment {blob_name} not found or not accessible",
+                    error_code="VOICE_ATTACHMENT_NOT_FOUND"
+                )
+            
+            # Check if user has access (must be the owner)
+            if voice_attachment.user_id != user_id:
+                raise ValidationError(
+                    "Access denied: You can only delete your own voice attachments",
+                    error_code="ACCESS_DENIED"
+                )
+            
+            # Delete from blob storage
+            await self.blob_service.delete_voice_attachment(blob_name)
+            
+            # Mark as deleted in database
+            await self.voice_attachment_repository.mark_as_deleted(voice_attachment.id)
+            
+            logger.info(f"Deleted stored voice attachment: {blob_name}")
+            return True
+            
+        except (ValidationError, AuthenticationError):
+            raise
+        except Exception as e:
+            logger.error(f"Failed to delete stored voice attachment: {str(e)}")
+            raise AuthenticationError(f"Failed to delete stored voice attachment: {str(e)}")
+    
+    async def get_voice_attachment_storage_statistics(
+        self,
+        user_id: Optional[str] = None,
+        days_ago: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """Get voice attachment storage statistics.
+        
+        Args:
+            user_id: Optional user filter
+            days_ago: Optional filter for recent data
+            
+        Returns:
+            Storage statistics dictionary
+        """
+        try:
+            statistics = await self.voice_attachment_repository.get_statistics(
+                user_id=user_id,
+                days_ago=days_ago
+            )
+            
+            # Add additional computed statistics
+            if statistics["total_attachments"] > 0:
+                statistics["average_downloads_per_attachment"] = round(
+                    statistics["total_downloads"] / statistics["total_attachments"], 1
+                )
+            else:
+                statistics["average_downloads_per_attachment"] = 0
+            
+            # Storage efficiency metrics
+            storage_efficiency = {
+                "stored_percentage": round(
+                    (statistics["stored_attachments"] / statistics["total_attachments"] * 100) 
+                    if statistics["total_attachments"] > 0 else 0, 1
+                ),
+                "deleted_percentage": round(
+                    (statistics["deleted_attachments"] / statistics["total_attachments"] * 100) 
+                    if statistics["total_attachments"] > 0 else 0, 1
+                )
+            }
+            statistics["storage_efficiency"] = storage_efficiency
+            
+            return statistics
+            
+        except Exception as e:
+            logger.error(f"Failed to get storage statistics: {str(e)}")
+            raise AuthenticationError(f"Failed to get storage statistics: {str(e)}")
+    
+    async def cleanup_expired_voice_attachments(
+        self,
+        max_age_days: Optional[int] = None,
+        dry_run: bool = False
+    ) -> Dict[str, int]:
+        """Clean up expired voice attachments from both blob storage and database.
+        
+        Args:
+            max_age_days: Maximum age in days (default from settings)
+            dry_run: If True, only return count without deleting
+            
+        Returns:
+            Dictionary with cleanup statistics
+            
+        Raises:
+            AuthenticationError: If cleanup fails
+        """
+        try:
+            logger.info(f"Starting voice attachment cleanup (dry_run={dry_run})")
+            
+            # Get expired attachments from database
+            cutoff_date = None
+            if max_age_days is not None:
+                cutoff_date = datetime.utcnow() - timedelta(days=max_age_days)
+            
+            expired_attachments = await self.voice_attachment_repository.get_expired_attachments(
+                cutoff_date=cutoff_date,
+                limit=1000
+            )
+            
+            blob_deletion_count = 0
+            db_update_count = 0
+            errors = []
+            
+            if not dry_run:
+                for attachment in expired_attachments:
+                    try:
+                        # Delete from blob storage
+                        await self.blob_service.delete_voice_attachment(attachment.blob_name)
+                        blob_deletion_count += 1
+                        
+                        # Mark as deleted in database
+                        await self.voice_attachment_repository.mark_as_deleted(attachment.id)
+                        db_update_count += 1
+                        
+                    except Exception as e:
+                        error_msg = f"Failed to cleanup attachment {attachment.blob_name}: {str(e)}"
+                        errors.append(error_msg)
+                        logger.warning(error_msg)
+            
+            cleanup_stats = {
+                "expired_found": len(expired_attachments),
+                "blobs_deleted": blob_deletion_count,
+                "database_updated": db_update_count,
+                "errors": len(errors),
+                "error_details": errors,
+                "dry_run": dry_run
+            }
+            
+            logger.info(f"Voice attachment cleanup completed: {cleanup_stats}")
+            return cleanup_stats
+            
+        except Exception as e:
+            logger.error(f"Failed to cleanup expired voice attachments: {str(e)}")
+            raise AuthenticationError(f"Failed to cleanup expired voice attachments: {str(e)}")
 
     # Shared Mailbox Voice Attachment Methods
 
@@ -648,7 +1076,10 @@ class VoiceAttachmentService:
                         attachmentId=attachment.id,
                         name=attachment.name,
                         contentType=attachment.contentType or "unknown",
-                        size=attachment.size
+                        size=attachment.size,
+                        duration=None,
+                        sampleRate=None,
+                        bitRate=None
                     )
                     
                     # Try to extract additional metadata
@@ -795,8 +1226,8 @@ class VoiceAttachmentService:
             
             # Analyze voice attachments
             total_voice_attachments = 0
-            content_type_counts = {}
-            extension_counts = {}
+            content_type_counts: dict[str, int] = {}
+            extension_counts: dict[str, int] = {}
             total_voice_size = 0
             duration_total = 0.0
             duration_count = 0

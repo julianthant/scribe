@@ -20,13 +20,13 @@ from typing import List, Optional, Dict, Any
 import logging
 from datetime import datetime
 
-from app.core.azure_auth import azure_auth_client
-from app.core.exceptions import AuthenticationError, ValidationError, AuthorizationError
-from app.models.shared_mailbox import (
+from app.azure.AzureMailService import azure_mail_service
+from app.core.Exceptions import AuthenticationError, ValidationError, AuthorizationError
+from app.models.SharedMailboxModel import (
     SharedMailbox, SharedMailboxMessage, SharedMailboxPermission,
     SharedMailboxType, SharedMailboxAccessLevel, DelegationType
 )
-from app.models.mail import MailFolder, Message, MessageListResponse, Attachment
+from app.models.MailModel import MailFolder, Message, MessageListResponse, Attachment
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ class SharedMailboxRepository:
             AuthenticationError: If API call fails
         """
         try:
-            mailboxes_data = await azure_auth_client.get_shared_mailboxes(self.access_token)
+            mailboxes_data = await azure_mail_service.get_shared_mailboxes(self.access_token)
             
             mailboxes = []
             for mailbox_data in mailboxes_data.get("value", []):
@@ -76,7 +76,7 @@ class SharedMailboxRepository:
             ValidationError: If mailbox not found
         """
         try:
-            mailbox_data = await azure_auth_client.get_shared_mailbox_by_address(
+            mailbox_data = await azure_mail_service.get_shared_mailbox_by_address(
                 self.access_token, email_address
             )
             
@@ -105,7 +105,7 @@ class SharedMailboxRepository:
             AuthenticationError: If API call fails
         """
         try:
-            folders_data = await azure_auth_client.get_shared_mailbox_folders(
+            folders_data = await azure_mail_service.get_shared_mailbox_folders(
                 self.access_token, email_address
             )
             
@@ -157,13 +157,13 @@ class SharedMailboxRepository:
             AuthenticationError: If API call fails
         """
         try:
-            filter_params = {
+            filter_params: dict[str, int | str] = {
                 "top": top,
                 "skip": skip
             }
 
             if select:
-                filter_params["select"] = select
+                filter_params["select"] = ",".join(select)
 
             # Build OData filter
             filters = []
@@ -175,7 +175,7 @@ class SharedMailboxRepository:
             else:
                 filter_params["orderby"] = orderby
 
-            messages_data = await azure_auth_client.get_shared_mailbox_messages(
+            messages_data = await azure_mail_service.get_shared_mailbox_messages(
                 self.access_token, email_address, folder_id, filter_params
             )
 
@@ -184,10 +184,15 @@ class SharedMailboxRepository:
                 message = self._parse_shared_mailbox_message_data(message_data, email_address)
                 messages.append(message)
 
+            # Cast SharedMailboxMessage to Message for compatibility
+            from typing import cast
+            from app.models.MailModel import Message
+            message_objects = cast(list[Message], messages)
+            
             response = MessageListResponse(
-                value=messages,
-                odata_nextLink=messages_data.get("@odata.nextLink"),
-                odata_count=messages_data.get("@odata.count")
+                value=message_objects,
+                **{"@odata.nextLink": messages_data.get("@odata.nextLink")},
+                **{"@odata.count": messages_data.get("@odata.count")}
             )
 
             logger.info(f"Retrieved {len(messages)} messages from shared mailbox {email_address}")
@@ -215,7 +220,7 @@ class SharedMailboxRepository:
             AuthenticationError: If API call fails
         """
         try:
-            result = await azure_auth_client.send_shared_mailbox_message(
+            result = await azure_mail_service.send_shared_mailbox_message(
                 self.access_token, email_address, message_data
             )
             
@@ -252,7 +257,7 @@ class SharedMailboxRepository:
             if parent_id:
                 folder_data["parentFolderId"] = parent_id
 
-            created_folder_data = await azure_auth_client.create_shared_mailbox_folder(
+            created_folder_data = await azure_mail_service.create_shared_mailbox_folder(
                 self.access_token, email_address, folder_data
             )
             
@@ -293,7 +298,7 @@ class SharedMailboxRepository:
             AuthenticationError: If API call fails
         """
         try:
-            await azure_auth_client.move_shared_mailbox_message(
+            await azure_mail_service.move_shared_mailbox_message(
                 self.access_token, email_address, message_id, destination_folder_id
             )
             
@@ -327,18 +332,21 @@ class SharedMailboxRepository:
             
             # For now, we'll leverage the existing attachment functionality
             # but target the shared mailbox. This would need to be implemented
-            # in the azure_auth_client similar to get_message_attachments
+            # in the azure_mail_service similar to get_message_attachments
             
-            # Placeholder - in real implementation, would add method to azure_auth_client
-            attachments_data = {"value": []}
+            # Placeholder - in real implementation, would add method to azure_mail_service
+            attachments_data: dict[str, list] = {"value": []}
             
-            attachments = []
+            attachments: list[dict] = []
             for attachment_data in attachments_data.get("value", []):
                 # Would parse attachment data here
                 pass
 
             logger.info(f"Retrieved {len(attachments)} attachments from message {message_id} in {email_address}")
-            return attachments
+            # Cast placeholder return to correct type
+            from typing import cast
+            from app.models.MailModel import Attachment
+            return cast(list[Attachment], attachments)
 
         except Exception as e:
             logger.error(f"Error retrieving attachments from {email_address}: {str(e)}")
@@ -370,7 +378,7 @@ class SharedMailboxRepository:
             AuthenticationError: If API call fails
         """
         try:
-            filter_params = {
+            filter_params: dict[str, int | str] = {
                 "top": top,
                 "skip": skip
             }
@@ -383,7 +391,7 @@ class SharedMailboxRepository:
 
             filter_params["filter"] = " and ".join(filters)
 
-            messages_data = await azure_auth_client.get_shared_mailbox_messages(
+            messages_data = await azure_mail_service.get_shared_mailbox_messages(
                 self.access_token, email_address, folder_id, filter_params
             )
 
@@ -392,10 +400,15 @@ class SharedMailboxRepository:
                 message = self._parse_shared_mailbox_message_data(message_data, email_address)
                 messages.append(message)
 
+            # Cast SharedMailboxMessage to Message for compatibility
+            from typing import cast
+            from app.models.MailModel import Message
+            message_objects = cast(list[Message], messages)
+            
             response = MessageListResponse(
-                value=messages,
-                odata_nextLink=messages_data.get("@odata.nextLink"),
-                odata_count=messages_data.get("@odata.count")
+                value=message_objects,
+                **{"@odata.nextLink": messages_data.get("@odata.nextLink")},
+                **{"@odata.count": messages_data.get("@odata.count")}
             )
 
             logger.info(f"Found {len(messages)} messages matching '{query}' in {email_address}")
@@ -421,11 +434,11 @@ class SharedMailboxRepository:
             AuthenticationError: If API call fails
         """
         try:
-            permissions_data = await azure_auth_client.get_shared_mailbox_permissions(
+            permissions_data = await azure_mail_service.get_shared_mailbox_permissions(
                 self.access_token, email_address
             )
             
-            permissions = []
+            permissions: list[dict] = []
             # Parse permissions data - this is a placeholder
             # Real implementation would depend on the actual Graph API response
             for perm_data in permissions_data.get("value", []):
@@ -433,7 +446,9 @@ class SharedMailboxRepository:
                 pass
 
             logger.info(f"Retrieved {len(permissions)} permissions for {email_address}")
-            return permissions
+            # Cast placeholder return to correct type
+            from typing import cast
+            return cast(list[SharedMailboxPermission], permissions)
 
         except Exception as e:
             logger.error(f"Error retrieving permissions for {email_address}: {str(e)}")
@@ -478,7 +493,8 @@ class SharedMailboxRepository:
             location=mailbox_data.get("officeLocation"),
             phone=mailbox_data.get("businessPhones", [None])[0],
             department=mailbox_data.get("department"),
-            companyName=mailbox_data.get("companyName")
+            companyName=mailbox_data.get("companyName"),
+            resourceCapacity=None
         )
 
     def _parse_shared_mailbox_message_data(
@@ -501,7 +517,7 @@ class SharedMailboxRepository:
         def parse_recipients(recipients_data):
             recipients = []
             for recipient_data in recipients_data or []:
-                from app.models.mail import Recipient, EmailAddress
+                from app.models.MailModel import Recipient, EmailAddress
                 recipient = Recipient(
                     emailAddress=EmailAddress(
                         name=recipient_data["emailAddress"].get("name", ""),
@@ -523,7 +539,7 @@ class SharedMailboxRepository:
         # Parse body
         body = None
         if message_data.get("body"):
-            from app.models.mail import ItemBody, BodyType
+            from app.models.MailModel import ItemBody, BodyType
             body = ItemBody(
                 contentType=BodyType(message_data["body"]["contentType"]),
                 content=message_data["body"]["content"]
@@ -532,7 +548,7 @@ class SharedMailboxRepository:
         # Parse sender
         sender = None
         if message_data.get("sender"):
-            from app.models.mail import Recipient, EmailAddress
+            from app.models.MailModel import Recipient, EmailAddress
             sender = Recipient(
                 emailAddress=EmailAddress(
                     name=message_data["sender"]["emailAddress"].get("name", ""),
@@ -543,7 +559,7 @@ class SharedMailboxRepository:
         # Parse from
         from_ = None
         if message_data.get("from"):
-            from app.models.mail import Recipient, EmailAddress
+            from app.models.MailModel import Recipient, EmailAddress
             from_ = Recipient(
                 emailAddress=EmailAddress(
                     name=message_data["from"]["emailAddress"].get("name", ""),
@@ -551,7 +567,7 @@ class SharedMailboxRepository:
                 )
             )
 
-        from app.models.mail import Importance
+        from app.models.MailModel import Importance
         importance = Importance.NORMAL
         if message_data.get("importance"):
             try:
@@ -562,32 +578,35 @@ class SharedMailboxRepository:
         # Get shared mailbox name from email address (simplified)
         mailbox_name = email_address.split('@')[0].replace('.', ' ').title()
 
-        return SharedMailboxMessage(
-            id=message_data["id"],
-            subject=message_data.get("subject", ""),
-            body=body,
-            bodyPreview=message_data.get("bodyPreview", ""),
-            sender=sender,
-            from_=from_,
-            toRecipients=parse_recipients(message_data.get("toRecipients")),
-            ccRecipients=parse_recipients(message_data.get("ccRecipients")),
-            bccRecipients=parse_recipients(message_data.get("bccRecipients")),
-            receivedDateTime=parse_datetime(message_data.get("receivedDateTime")),
-            sentDateTime=parse_datetime(message_data.get("sentDateTime")),
-            createdDateTime=parse_datetime(message_data.get("createdDateTime")),
-            lastModifiedDateTime=parse_datetime(message_data.get("lastModifiedDateTime")),
-            hasAttachments=message_data.get("hasAttachments", False),
-            importance=importance,
-            isRead=message_data.get("isRead", False),
-            isDraft=message_data.get("isDraft", False),
-            parentFolderId=message_data.get("parentFolderId"),
-            conversationId=message_data.get("conversationId"),
-            internetMessageId=message_data.get("internetMessageId"),
-            webLink=message_data.get("webLink"),
+        # Create message data dict with proper field names  
+        message_dict = {
+            "id": message_data["id"],
+            "subject": message_data.get("subject", ""),
+            "body": body,
+            "bodyPreview": message_data.get("bodyPreview", ""),
+            "sender": sender,
+            "from": from_,  # Use alias name directly
+            "toRecipients": parse_recipients(message_data.get("toRecipients")),
+            "ccRecipients": parse_recipients(message_data.get("ccRecipients")),
+            "bccRecipients": parse_recipients(message_data.get("bccRecipients")),
+            "receivedDateTime": parse_datetime(message_data.get("receivedDateTime")),
+            "sentDateTime": parse_datetime(message_data.get("sentDateTime")),
+            "createdDateTime": parse_datetime(message_data.get("createdDateTime")),
+            "lastModifiedDateTime": parse_datetime(message_data.get("lastModifiedDateTime")),
+            "hasAttachments": message_data.get("hasAttachments", False),
+            "importance": importance,
+            "isRead": message_data.get("isRead", False),
+            "isDraft": message_data.get("isDraft", False),
+            "parentFolderId": message_data.get("parentFolderId"),
+            "conversationId": message_data.get("conversationId"),
+            "internetMessageId": message_data.get("internetMessageId"),
+            "webLink": message_data.get("webLink"),
             # Shared mailbox specific fields
-            sharedMailboxId=email_address,
-            sharedMailboxName=mailbox_name,
-            sharedMailboxEmail=email_address,
-            onBehalfOf=message_data.get("onBehalfOf"),
-            delegatedBy=message_data.get("delegatedBy")
-        )
+            "sharedMailboxId": email_address,
+            "sharedMailboxName": mailbox_name,
+            "sharedMailboxEmail": email_address,
+            "onBehalfOf": message_data.get("onBehalfOf"),
+            "delegatedBy": message_data.get("delegatedBy")
+        }
+        
+        return SharedMailboxMessage.model_validate(message_dict)

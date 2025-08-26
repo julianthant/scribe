@@ -3,7 +3,7 @@ auth.py - Authentication API Endpoints
 
 Provides REST API endpoints for Azure AD OAuth authentication flow.
 This module handles:
-- GET /auth/login: Initiates OAuth login and returns authorization URL
+- GET /auth/login: Redirects directly to Azure AD OAuth authorization URL
 - GET /auth/callback: Handles OAuth callback and exchanges code for tokens
 - POST /auth/refresh: Refreshes access tokens using refresh tokens
 - GET /auth/status: Returns current authentication status
@@ -11,7 +11,7 @@ This module handles:
 - GET /auth/user: Returns current user information
 
 All endpoints integrate with the OAuth service and provide standardized responses
-for authentication workflows in the frontend application.
+for authentication workflows.
 """
 
 from typing import Optional
@@ -20,9 +20,10 @@ import logging
 from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from fastapi.responses import RedirectResponse
 
-from app.services.oauth_service import oauth_service
-from app.dependencies.auth import get_current_user, get_current_user_optional
-from app.models.auth import (
+from app.services.OAuthService import OAuthService
+from app.dependencies.Auth import get_current_user, get_current_user_optional, get_user_repository
+from app.repositories.UserRepository import UserRepository
+from app.models.AuthModel import (
     LoginResponse,
     TokenResponse,
     LogoutResponse,
@@ -30,29 +31,35 @@ from app.models.auth import (
     AuthStatus,
     UserInfo
 )
-from app.core.exceptions import AuthenticationError, ValidationError
+from app.core.Exceptions import AuthenticationError, ValidationError
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
 
-@router.get("/login", response_model=LoginResponse)
-async def initiate_login():
-    """Initiate OAuth login flow with Azure AD.
+def get_oauth_service(
+    user_repository: UserRepository = Depends(get_user_repository)
+) -> OAuthService:
+    """Get OAuthService instance with UserRepository injected."""
+    return OAuthService(user_repository=user_repository)
+
+
+@router.get("/login")
+async def initiate_login(
+    oauth_service: OAuthService = Depends(get_oauth_service)
+):
+    """Initiate OAuth login flow with Azure AD by redirecting to auth URL.
     
     Returns:
-        LoginResponse: Contains authorization URL and state parameter
+        RedirectResponse: Direct redirect to Azure AD authorization URL
         
     Raises:
         HTTPException: If login initiation fails
     """
     try:
         auth_data = oauth_service.initiate_login()
-        return LoginResponse(
-            auth_url=auth_data["auth_uri"],
-            state=auth_data["state"]
-        )
+        return RedirectResponse(url=auth_data["auth_uri"])
     except AuthenticationError as e:
         logger.error(f"Login initiation failed: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -67,7 +74,8 @@ async def handle_oauth_callback(
     code: Optional[str] = Query(None, description="Authorization code from Azure AD"),
     state: Optional[str] = Query(None, description="State parameter for CSRF protection"),
     error: Optional[str] = Query(None, description="Error from OAuth provider"),
-    error_description: Optional[str] = Query(None, description="Error description")
+    error_description: Optional[str] = Query(None, description="Error description"),
+    oauth_service: OAuthService = Depends(get_oauth_service)
 ):
     """Handle OAuth callback from Azure AD.
     
@@ -99,8 +107,17 @@ async def handle_oauth_callback(
         # Get full callback URL
         callback_url = str(request.url)
         
+        # Extract client information for audit trail
+        ip_address = request.client.host if request.client else None
+        user_agent = request.headers.get("user-agent")
+        
         # Handle the callback
-        token_response = await oauth_service.handle_callback(callback_url, state)
+        token_response = await oauth_service.handle_callback(
+            callback_url=callback_url,
+            state=state,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
         
         logger.info(f"User successfully authenticated: {token_response.user_info.email}")
         return token_response
@@ -117,7 +134,10 @@ async def handle_oauth_callback(
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh_access_token(refresh_request: RefreshTokenRequest):
+async def refresh_access_token(
+    refresh_request: RefreshTokenRequest,
+    oauth_service: OAuthService = Depends(get_oauth_service)
+):
     """Refresh an expired access token.
     
     Args:
@@ -131,7 +151,8 @@ async def refresh_access_token(refresh_request: RefreshTokenRequest):
     """
     try:
         token_response = await oauth_service.refresh_user_token(
-            refresh_request.refresh_token
+            refresh_token=refresh_request.refresh_token,
+            session_id=refresh_request.session_id
         )
         
         logger.info(f"Token refreshed for user: {token_response.user_info.email}")
@@ -146,7 +167,10 @@ async def refresh_access_token(refresh_request: RefreshTokenRequest):
 
 
 @router.post("/logout", response_model=LogoutResponse)
-async def logout(session_id: Optional[str] = None):
+async def logout(
+    session_id: Optional[str] = None,
+    oauth_service: OAuthService = Depends(get_oauth_service)
+):
     """Logout user and clean up session.
     
     Args:
@@ -156,7 +180,7 @@ async def logout(session_id: Optional[str] = None):
         LogoutResponse: Logout status and message
     """
     try:
-        success = oauth_service.logout(session_id)
+        success = await oauth_service.logout(session_id)
         
         if success:
             logger.info("User logged out successfully")
@@ -172,7 +196,8 @@ async def logout(session_id: Optional[str] = None):
 
 @router.get("/me", response_model=UserInfo)
 async def get_current_user_info(
-    current_user: UserInfo = Depends(get_current_user)
+    current_user: UserInfo = Depends(get_current_user),
+    oauth_service: OAuthService = Depends(get_oauth_service)
 ):
     """Get current authenticated user information.
     
@@ -187,7 +212,8 @@ async def get_current_user_info(
 
 @router.get("/status", response_model=AuthStatus)
 async def get_auth_status(
-    current_user: Optional[UserInfo] = Depends(get_current_user_optional)
+    current_user: Optional[UserInfo] = Depends(get_current_user_optional),
+    oauth_service: OAuthService = Depends(get_oauth_service)
 ):
     """Get current authentication status.
     

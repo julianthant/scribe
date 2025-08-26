@@ -8,6 +8,7 @@ import logging
 from typing import Any, Optional, Dict, List
 from datetime import datetime, timedelta
 from dataclasses import dataclass
+from collections import OrderedDict
 
 logger = logging.getLogger(__name__)
 
@@ -33,22 +34,26 @@ class CacheEntry:
 
 
 class MemoryCache:
-    """Simple in-memory cache with TTL support."""
+    """Simple in-memory cache with TTL support and size limits for Azure Functions."""
 
-    def __init__(self, default_ttl: float = 300):
+    def __init__(self, default_ttl: float = 300, max_size: int = 1000):
         """Initialize memory cache.
         
         Args:
             default_ttl: Default time-to-live in seconds (5 minutes)
+            max_size: Maximum number of cached entries (for Azure Functions memory management)
         """
-        self._cache: Dict[str, CacheEntry] = {}
+        # Use OrderedDict for LRU eviction
+        self._cache: OrderedDict[str, CacheEntry] = OrderedDict()
         self.default_ttl = default_ttl
+        self.max_size = max_size
         self._stats = {
             "hits": 0,
             "misses": 0,
             "sets": 0,
             "deletes": 0,
-            "cleanups": 0
+            "cleanups": 0,
+            "evictions": 0  # Track LRU evictions
         }
 
     def get(self, key: str) -> Optional[Any]:
@@ -71,11 +76,14 @@ class MemoryCache:
             self._stats["misses"] += 1
             return None
 
+        # Move to end for LRU ordering
+        self._cache.move_to_end(key)
+        
         self._stats["hits"] += 1
         return entry.access()
 
     def set(self, key: str, value: Any, ttl: Optional[float] = None) -> None:
-        """Set value in cache.
+        """Set value in cache with LRU eviction if at capacity.
         
         Args:
             key: Cache key
@@ -84,6 +92,17 @@ class MemoryCache:
         """
         if ttl is None:
             ttl = self.default_ttl
+
+        # Remove existing key if present (for proper LRU ordering)
+        if key in self._cache:
+            del self._cache[key]
+        
+        # Check if we need to evict oldest entries
+        while len(self._cache) >= self.max_size:
+            oldest_key = next(iter(self._cache))
+            del self._cache[oldest_key]
+            self._stats["evictions"] += 1
+            logger.debug(f"Evicted cache entry due to size limit: {oldest_key}")
 
         self._cache[key] = CacheEntry(
             value=value,
@@ -144,13 +163,15 @@ class MemoryCache:
         
         return {
             "total_entries": len(self._cache),
+            "max_size": self.max_size,
+            "size_utilization_percent": round((len(self._cache) / self.max_size) * 100, 2),
             "hits": self._stats["hits"],
             "misses": self._stats["misses"],
             "hit_rate_percent": round(hit_rate, 2),
             "sets": self._stats["sets"],
             "deletes": self._stats["deletes"],
             "cleanups": self._stats["cleanups"],
-            "memory_usage_entries": len(self._cache)
+            "evictions": self._stats["evictions"]
         }
 
     def get_cache_info(self) -> Dict[str, Any]:
@@ -174,7 +195,8 @@ class MemoryCache:
             })
         
         # Sort by most recently accessed
-        entries_info.sort(key=lambda x: x["last_accessed"], reverse=True)
+        from typing import cast
+        entries_info.sort(key=lambda x: cast(float, x["last_accessed"]), reverse=True)
         
         return {
             "stats": self.get_stats(),
@@ -315,8 +337,14 @@ class SharedMailboxCache:
         }
 
 
-# Global cache instances
-_memory_cache = MemoryCache(default_ttl=300)
+# Global cache instances with configuration from settings
+from app.core.config import settings
+
+# Initialize cache with configuration values
+_memory_cache = MemoryCache(
+    default_ttl=settings.get("cache_default_ttl", 300),
+    max_size=settings.get("cache_max_size", 1000)
+)
 shared_mailbox_cache = SharedMailboxCache(_memory_cache)
 
 
@@ -336,3 +364,32 @@ def cleanup_expired_entries():
     if expired_count > 0:
         logger.info(f"Cleaned up {expired_count} expired cache entries")
     return expired_count
+
+
+def get_cache_metrics() -> Dict[str, Any]:
+    """Get comprehensive cache metrics for monitoring in Azure Functions.
+    
+    Returns:
+        Dictionary containing cache performance metrics
+    """
+    return {
+        "memory_cache": _memory_cache.get_stats(),
+        "shared_mailbox_cache": shared_mailbox_cache.get_cache_status(),
+        "cleanup_interval": settings.get("cache_cleanup_interval", 180)
+    }
+
+
+def warmup_cache():
+    """Initialize cache for Azure Functions cold starts.
+    
+    This function can be called during function app startup to prepare
+    commonly used cache structures, reducing first-request latency.
+    """
+    logger.info("Warming up cache for Azure Functions")
+    
+    # Pre-initialize cache structures without actual data
+    # This helps with memory allocation patterns
+    _memory_cache.get_stats()
+    shared_mailbox_cache.get_cache_status()
+    
+    logger.debug("Cache warmup completed")

@@ -21,7 +21,7 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 from enum import Enum
 
-from app.models.mail import Message, MessageListResponse, MailFolder, FolderStatistics
+from app.models.MailModel import Message, MessageListResponse, MailFolder, FolderStatistics
 
 
 class SharedMailboxAccessLevel(str, Enum):

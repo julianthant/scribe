@@ -22,16 +22,16 @@ import logging
 from datetime import datetime, timedelta
 import asyncio
 
-from app.repositories.shared_mailbox_repository import SharedMailboxRepository
-from app.core.exceptions import AuthenticationError, ValidationError, AuthorizationError
-from app.core.cache import get_shared_mailbox_cache, SharedMailboxCache
-from app.models.shared_mailbox import (
+from app.repositories.SharedMailboxRepository import SharedMailboxRepository
+from app.core.Exceptions import AuthenticationError, ValidationError, AuthorizationError
+from app.core.Cache import get_shared_mailbox_cache, SharedMailboxCache
+from app.models.SharedMailboxModel import (
     SharedMailbox, SharedMailboxMessage, SharedMailboxAccess,
     SharedMailboxStatistics, SharedMailboxSearchRequest, SharedMailboxSearchResponse,
     SendAsSharedRequest, OrganizeSharedMailboxRequest, OrganizeSharedMailboxResponse,
     SharedMailboxAccessLevel, SharedMailboxListResponse, SharedMailboxAuditEntry
 )
-from app.models.mail import MailFolder, MessageListResponse, VoiceAttachment
+from app.models.MailModel import MailFolder, MessageListResponse, VoiceAttachment
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,8 @@ class SharedMailboxService:
             response = SharedMailboxListResponse(
                 value=active_mailboxes,
                 totalCount=len(mailboxes),
-                accessibleCount=len(active_mailboxes)
+                accessibleCount=len(active_mailboxes),
+                **{"@odata.nextLink": None}
             )
             
             logger.info(f"Retrieved {len(active_mailboxes)} accessible shared mailboxes")
@@ -260,7 +261,7 @@ class SharedMailboxService:
                 raise ValidationError("Message body is required")
             
             # Build message data for Graph API
-            message_data = {
+            message_data: dict[str, Any] = {
                 "message": {
                     "subject": request.subject,
                     "body": {
@@ -523,8 +524,9 @@ class SharedMailboxService:
                     logger.warning(f"Search failed for {email_address}: {str(result)}")
                     continue
                 
+                # At this point, result is not an Exception
                 searched_mailboxes.append(email_address)
-                if result and result.value:
+                if result and hasattr(result, 'value') and result.value:
                     total_results += len(result.value)
                     all_results.append({
                         "mailbox": email_address,
@@ -692,7 +694,10 @@ class SharedMailboxService:
                 action=action,
                 details=details,
                 timestamp=datetime.utcnow(),
-                success=True
+                success=True,
+                ipAddress=None,
+                userAgent=None,
+                errorMessage=None
             )
             
             # In a real implementation, would persist to database/logging system

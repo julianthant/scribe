@@ -19,11 +19,11 @@ import logging
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-from app.repositories.shared_mailbox_repository import SharedMailboxRepository
-from app.services.shared_mailbox_service import SharedMailboxService
-from app.dependencies.auth import get_current_user
-from app.models.auth import UserInfo
-from app.core.exceptions import AuthenticationError
+from app.repositories.SharedMailboxRepository import SharedMailboxRepository
+from app.services.SharedMailboxService import SharedMailboxService
+from app.dependencies.Auth import get_current_user
+from app.models.AuthModel import UserInfo
+from app.core.Exceptions import AuthenticationError
 
 logger = logging.getLogger(__name__)
 

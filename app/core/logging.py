@@ -16,6 +16,7 @@ The logging configuration respects the LOG_LEVEL setting from the application co
 
 import logging
 import sys
+import time
 from functools import wraps
 from typing import Callable, Any
 from datetime import datetime
@@ -25,9 +26,24 @@ from app.core.config import settings
 
 def setup_logging() -> None:
     """Configure application logging."""
+    startup_logger = logging.getLogger("app.startup")
+    startup_time = time.time()
+    
+    startup_logger.info("[STARTUP] Initializing Scribe application logging...")
+    
+    # Determine log format
+    if settings.log_format == "json":
+        # Use a simple format for JSON-style logging
+        format_string = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    elif settings.log_format == "standard":
+        # Standard format
+        format_string = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    else:
+        # Use the format as-is if it's already a valid format string
+        format_string = settings.log_format
     
     # Create formatter
-    formatter = logging.Formatter(settings.log_format)
+    formatter = logging.Formatter(format_string)
     
     # Create console handler
     console_handler = logging.StreamHandler(sys.stdout)
@@ -48,6 +64,29 @@ def setup_logging() -> None:
     # Set specific logger levels
     logging.getLogger("uvicorn").setLevel(logging.INFO)
     logging.getLogger("fastapi").setLevel(logging.INFO)
+    
+    # Suppress SQLAlchemy SQL query logging
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+    logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
+    
+    # Suppress verbose Azure credential logging
+    logging.getLogger("azure.identity").setLevel(logging.WARNING)
+    logging.getLogger("azure.core").setLevel(logging.WARNING)
+    logging.getLogger("azure.identity._credentials").setLevel(logging.WARNING)
+    logging.getLogger("azure.identity._internal").setLevel(logging.WARNING)
+    logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
+    
+    # Keep application loggers at appropriate levels
+    logging.getLogger("app.startup").setLevel(logging.INFO)
+    logging.getLogger("app.database").setLevel(logging.INFO)
+    logging.getLogger("app.services").setLevel(logging.INFO)
+    logging.getLogger("app.azure").setLevel(logging.INFO)
+    
+    setup_time = (time.time() - startup_time) * 1000
+    startup_logger.info(f"[OK] Logging configuration completed in {setup_time:.2f}ms")
+    startup_logger.info(f"[CONFIG] Log level: {settings.log_level}")
+    startup_logger.info(f"[CONFIG] Log format: {settings.log_format}")
+    startup_logger.info(f"[CONFIG] Environment: {settings.current_env}")
 
 
 def get_logger(name: str) -> logging.Logger:
@@ -122,8 +161,8 @@ def log_api_request(
 
 def log_error(
     error: Exception,
-    context: str = None,
-    extra_data: dict = None
+    context: str | None = None,
+    extra_data: dict | None = None
 ) -> None:
     """Log error with context."""
     logger = get_logger("app.errors")
@@ -134,3 +173,46 @@ def log_error(
         message += f" | Extra data: {extra_data}"
     
     logger.error(message, exc_info=True)
+
+
+def log_startup_component(
+    component_name: str,
+    start_time: float,
+    success: bool = True,
+    error: Exception = None,
+    details: dict = None
+) -> None:
+    """Log startup component initialization."""
+    logger = get_logger("app.startup")
+    duration = (time.time() - start_time) * 1000
+    
+    if success:
+        logger.info(f"[OK] {component_name} initialized successfully in {duration:.2f}ms")
+        if details:
+            for key, value in details.items():
+                logger.info(f"  -> {key}: {value}")
+    else:
+        logger.error(f"[ERROR] {component_name} initialization failed after {duration:.2f}ms")
+        if error:
+            logger.error(f"  -> Error: {str(error)}")
+
+
+def log_service_startup(
+    service_name: str,
+    version: str = None,
+    config_details: dict = None
+) -> None:
+    """Log service startup information."""
+    logger = get_logger("app.services")
+    
+    logger.info(f"[SERVICE] Starting {service_name}...")
+    if version:
+        logger.info(f"  -> Version: {version}")
+    
+    if config_details:
+        for key, value in config_details.items():
+            # Don't log sensitive information
+            if any(sensitive in key.lower() for sensitive in ['secret', 'password', 'key', 'token']):
+                logger.info(f"  -> {key}: [REDACTED]")
+            else:
+                logger.info(f"  -> {key}: {value}")

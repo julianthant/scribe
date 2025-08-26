@@ -23,18 +23,18 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Path
 
-from app.services.shared_mailbox_service import SharedMailboxService
-from app.dependencies.auth import get_current_user
-from app.dependencies.shared_mailbox import get_shared_mailbox_service
-from app.models.auth import UserInfo
-from app.models.shared_mailbox import (
+from app.services.SharedMailboxService import SharedMailboxService
+from app.dependencies.Auth import get_current_user
+from app.dependencies.SharedMailbox import get_shared_mailbox_service
+from app.models.AuthModel import UserInfo
+from app.models.SharedMailboxModel import (
     SharedMailbox, SharedMailboxAccess, SharedMailboxListResponse,
     SharedMailboxStatistics, SharedMailboxSearchRequest, SharedMailboxSearchResponse,
     SendAsSharedRequest, OrganizeSharedMailboxRequest, OrganizeSharedMailboxResponse,
     CreateSharedMailboxRequest, UpdateSharedMailboxRequest
 )
-from app.models.mail import MailFolder, MessageListResponse
-from app.core.exceptions import ValidationError, AuthenticationError, AuthorizationError
+from app.models.MailModel import MailFolder, MessageListResponse
+from app.core.Exceptions import ValidationError, AuthenticationError, AuthorizationError
 
 logger = logging.getLogger(__name__)
 
@@ -452,7 +452,9 @@ async def organize_voice_messages_in_shared_mailbox(
         request = OrganizeSharedMailboxRequest(
             targetFolderName=target_folder,
             createFolder=create_folder,
-            messageType="voice"
+            messageType="voice",
+            includeSubfolders=False,
+            preserveReadStatus=True
         )
         
         response = await shared_mailbox_service.organize_shared_mailbox_messages(
@@ -502,7 +504,7 @@ async def get_shared_mailboxes_usage_analytics(
             accessible_response = await shared_mailbox_service.get_accessible_shared_mailboxes()
             mailbox_addresses = [mb.emailAddress for mb in accessible_response.value]
         
-        analytics = {
+        analytics: dict[str, Any] = {
             "period": {
                 "days": days,
                 "startDate": f"{days} days ago",

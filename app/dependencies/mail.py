@@ -18,11 +18,15 @@ import logging
 
 from fastapi import HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.mail_service import MailService
-from app.services.voice_attachment_service import VoiceAttachmentService
-from app.repositories.mail_repository import MailRepository
-from app.repositories.shared_mailbox_repository import SharedMailboxRepository
+from app.services.MailService import MailService
+from app.services.VoiceAttachmentService import VoiceAttachmentService
+from app.repositories.MailRepository import MailRepository
+from app.repositories.SharedMailboxRepository import SharedMailboxRepository
+from app.repositories.VoiceAttachmentRepository import VoiceAttachmentRepository
+from app.azure.AzureBlobService import AzureBlobService, azure_blob_service
+from app.db.Database import get_async_db
 
 logger = logging.getLogger(__name__)
 
@@ -94,9 +98,34 @@ def get_shared_mailbox_repository(
     return SharedMailboxRepository(access_token)
 
 
+async def get_voice_attachment_repository(
+    db_session: AsyncSession = Depends(get_async_db)
+) -> VoiceAttachmentRepository:
+    """Get voice attachment repository with database session.
+    
+    Args:
+        db_session: Database session
+        
+    Returns:
+        VoiceAttachmentRepository: Configured voice attachment repository
+    """
+    return VoiceAttachmentRepository(db_session)
+
+
+def get_blob_service() -> AzureBlobService:
+    """Get Azure blob service instance.
+    
+    Returns:
+        AzureBlobService: Configured blob service
+    """
+    return azure_blob_service
+
+
 def get_voice_attachment_service(
     mail_service: MailService = Depends(get_mail_service),
     mail_repository: MailRepository = Depends(get_mail_repository),
+    voice_attachment_repository: VoiceAttachmentRepository = Depends(get_voice_attachment_repository),
+    blob_service: AzureBlobService = Depends(get_blob_service),
     shared_mailbox_repository: Optional[SharedMailboxRepository] = Depends(get_shared_mailbox_repository)
 ) -> VoiceAttachmentService:
     """Get voice attachment service with dependencies.
@@ -104,9 +133,17 @@ def get_voice_attachment_service(
     Args:
         mail_service: Mail service instance
         mail_repository: Mail repository instance
+        voice_attachment_repository: Voice attachment repository instance
+        blob_service: Azure blob service instance
         shared_mailbox_repository: Optional shared mailbox repository instance
         
     Returns:
         VoiceAttachmentService: Configured voice attachment service
     """
-    return VoiceAttachmentService(mail_service, mail_repository, shared_mailbox_repository)
+    return VoiceAttachmentService(
+        mail_service=mail_service,
+        mail_repository=mail_repository,
+        voice_attachment_repository=voice_attachment_repository,
+        blob_service=blob_service,
+        shared_mailbox_repository=shared_mailbox_repository
+    )

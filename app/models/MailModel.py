@@ -169,6 +169,80 @@ class VoiceAttachment(BaseModel):
     bitRate: Optional[int] = Field(None, description="Audio bit rate")
 
 
+class StoredVoiceAttachment(BaseModel):
+    """Stored voice attachment in blob storage."""
+    id: str = Field(..., description="Database ID")
+    blob_name: str = Field(..., description="Blob storage identifier")
+    original_filename: str = Field(..., description="Original filename")
+    content_type: str = Field(..., description="Audio MIME type")
+    size_bytes: int = Field(..., description="File size in bytes")
+    size_mb: float = Field(..., description="File size in MB")
+    duration_seconds: Optional[int] = Field(None, description="Audio duration in seconds")
+    sender_email: str = Field(..., description="Email sender")
+    sender_name: Optional[str] = Field(None, description="Sender display name")
+    subject: str = Field(..., description="Email subject")
+    received_at: str = Field(..., description="Email received timestamp (ISO format)")
+    stored_at: str = Field(..., description="Storage timestamp (ISO format)")
+    download_count: int = Field(0, description="Number of times downloaded")
+    last_downloaded_at: Optional[str] = Field(None, description="Last download timestamp")
+    expires_at: Optional[str] = Field(None, description="Expiration timestamp")
+
+
+class StoredVoiceAttachmentList(BaseModel):
+    """List of stored voice attachments with pagination."""
+    attachments: List[StoredVoiceAttachment] = Field(..., description="List of stored attachments")
+    pagination: Dict[str, Any] = Field(..., description="Pagination information")
+
+
+class StoreVoiceAttachmentRequest(BaseModel):
+    """Request to store a voice attachment in blob storage."""
+    sender_name: Optional[str] = Field(None, description="Optional sender name")
+    subject: Optional[str] = Field(None, description="Optional email subject")
+    received_at: Optional[str] = Field(None, description="Optional received timestamp")
+
+
+class StoreVoiceAttachmentResponse(BaseModel):
+    """Response after storing a voice attachment."""
+    success: bool = Field(..., description="Whether storage was successful")
+    message: str = Field(..., description="Status message")
+    blob_name: str = Field(..., description="Blob storage identifier")
+    message_id: str = Field(..., description="Graph API message ID")
+    attachment_id: str = Field(..., description="Graph API attachment ID")
+
+
+class VoiceAttachmentStorageStatistics(BaseModel):
+    """Voice attachment storage statistics."""
+    total_attachments: int = Field(0, description="Total number of attachments")
+    stored_attachments: int = Field(0, description="Number of stored attachments")
+    deleted_attachments: int = Field(0, description="Number of deleted attachments")
+    total_size_bytes: int = Field(0, description="Total storage size in bytes")
+    total_size_mb: float = Field(0.0, description="Total storage size in MB")
+    total_downloads: int = Field(0, description="Total download count")
+    average_size_bytes: float = Field(0.0, description="Average attachment size in bytes")
+    average_size_mb: float = Field(0.0, description="Average attachment size in MB")
+    average_downloads_per_attachment: float = Field(0.0, description="Average downloads per attachment")
+    latest_received: Optional[str] = Field(None, description="Latest attachment received timestamp")
+    earliest_received: Optional[str] = Field(None, description="Earliest attachment received timestamp")
+    content_types: Dict[str, Dict[str, Any]] = Field({}, description="Breakdown by content type")
+    storage_efficiency: Dict[str, float] = Field({}, description="Storage efficiency metrics")
+
+
+class VoiceAttachmentCleanupStats(BaseModel):
+    """Voice attachment cleanup statistics."""
+    expired_found: int = Field(0, description="Number of expired attachments found")
+    blobs_deleted: int = Field(0, description="Number of blobs deleted")
+    database_updated: int = Field(0, description="Number of database records updated")
+    errors: int = Field(0, description="Number of errors encountered")
+    error_details: List[str] = Field([], description="List of error messages")
+    dry_run: bool = Field(True, description="Whether this was a dry run")
+
+
+class DeleteVoiceAttachmentResponse(BaseModel):
+    """Response after deleting a voice attachment."""
+    success: bool = Field(..., description="Whether deletion was successful")
+    message: str = Field(..., description="Status message")
+
+
 class FolderStatistics(BaseModel):
     """Folder statistics model."""
     folderId: str = Field(..., description="Folder ID")

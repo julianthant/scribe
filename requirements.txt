@@ -1,5 +1,14 @@
-fastapi==0.116.1
+fastapi[standard]==0.116.1
 httpx==0.28.1
 msal==1.33.0
 pydantic==2.11.7
-pydantic_settings==2.10. 
+pydantic-settings==2.10.1
+dynaconf==3.2.7
+uvicorn==0.34.0
+python-multipart==0.0.20
+sqlalchemy[asyncio]==2.0.32
+aioodbc==0.5.0
+pyodbc==5.2.0
+alembic==1.13.2
+azure-identity==1.17.1
+azure-storage-blob==12.21.0
