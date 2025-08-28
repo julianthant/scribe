@@ -1,168 +1,267 @@
-# Authentication API
+# Authentication API Documentation
 
-This document describes the authentication endpoints and OAuth2 flow implementation using Azure Active Directory (Azure AD).
+This document describes the authentication endpoints provided by the Scribe API, including OAuth flow management, token operations, and user session handling.
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Authentication Flow](#authentication-flow)
+3. [Endpoints](#endpoints)
+4. [Request/Response Models](#requestresponse-models)
+5. [Error Handling](#error-handling)
+6. [Security Considerations](#security-considerations)
+7. [Examples](#examples)
 
 ## Overview
 
-The Scribe API uses OAuth 2.0 with Azure Active Directory for user authentication. The implementation follows the Authorization Code flow with PKCE (Proof Key for Code Exchange) for enhanced security.
+The authentication API provides OAuth 2.0 integration with Azure Active Directory for secure user authentication and authorization. All endpoints are located under the `/auth` prefix.
 
-## Endpoints
+**Base URL**: `/api/v1/auth`
 
-### Base URL
-```
-/api/v1/auth
+### Authentication Flow Summary
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant API as Scribe API
+    participant AAD as Azure AD
+    
+    Note over C,AAD: Login Flow
+    C->>API: GET /auth/login
+    API-->>C: HTTP 302 → Azure AD
+    C->>AAD: User Authentication
+    AAD->>API: GET /auth/callback?code=xxx
+    API-->>C: JSON: TokenResponse
+    
+    Note over C,AAD: API Access
+    C->>API: GET /api/v1/mail/messages<br/>Authorization: Bearer <token>
+    API-->>C: JSON: Mail Data
+    
+    Note over C,AAD: Token Refresh
+    C->>API: POST /auth/refresh
+    API-->>C: JSON: New TokenResponse
 ```
 
 ## Authentication Flow
 
-### 1. Initiate Login
+### 1. Login Initiation
 
-Initiates the OAuth login flow with Azure AD.
+The authentication process starts with a direct redirect to Azure AD:
 
-**Endpoint:** `GET /api/v1/auth/login`
-
-**Response:** `200 OK`
-```json
-{
-  "auth_url": "https://login.microsoftonline.com/.../oauth2/v2.0/authorize?...",
-  "state": "random-state-parameter"
-}
+```mermaid
+graph LR
+    A[Client] -->|GET /auth/login| B[Scribe API]
+    B -->|HTTP 302 Redirect| C[Azure AD Login]
+    C -->|User Authenticates| D[Azure AD Callback]
+    D -->|GET /auth/callback| B
+    B -->|TokenResponse| A
 ```
 
-**Response Fields:**
-- `auth_url` (string): URL to redirect user for Azure AD authentication
-- `state` (string): CSRF protection state parameter
+### 2. Token Management
 
-**Error Responses:**
-- `400 Bad Request`: Login initiation failed
-- `500 Internal Server Error`: Unexpected error
+Tokens have expiration times and must be refreshed periodically:
+- **Access Token**: 1 hour default lifetime
+- **Refresh Token**: 90 days default lifetime  
+- **Session**: Tracked in database with metadata
 
-### 2. Handle OAuth Callback
+## Endpoints
 
-Processes the OAuth callback from Azure AD and exchanges authorization code for tokens.
+### GET /auth/login
 
-**Endpoint:** `GET /api/v1/auth/callback`
+Initiates OAuth login flow by redirecting to Azure AD.
 
-**Query Parameters:**
+**Method**: `GET`  
+**Path**: `/auth/login`  
+**Authentication**: None required
+
+**Response**: 
+- **302 Found**: Redirects to Azure AD authorization URL
+- **400 Bad Request**: If login initiation fails
+
+**Example Request**:
+```bash
+curl -X GET "https://api.example.com/api/v1/auth/login" \
+  -H "Accept: application/json"
+```
+
+**Example Response**:
+```http
+HTTP/1.1 302 Found
+Location: https://login.microsoftonline.com/tenant-id/oauth2/v2.0/authorize?client_id=...&response_type=code&redirect_uri=...&scope=...&state=...
+```
+
+---
+
+### GET /auth/callback
+
+Handles OAuth callback from Azure AD and exchanges authorization code for tokens.
+
+**Method**: `GET`  
+**Path**: `/auth/callback`  
+**Authentication**: None required
+
+**Query Parameters**:
 - `code` (string, required): Authorization code from Azure AD
-- `state` (string, optional): State parameter for CSRF validation
+- `state` (string, optional): CSRF protection state parameter
 - `error` (string, optional): Error code if authentication failed
 - `error_description` (string, optional): Detailed error description
 
-**Response:** `200 OK`
+**Response Model**: `TokenResponse`
+
+**Example Request**:
+```bash
+# This request is typically made by Azure AD, not directly by clients
+curl -X GET "https://api.example.com/api/v1/auth/callback?code=M.C507_BL2.0.U.-CUx&state=abc123..." \
+  -H "Accept: application/json"
+```
+
+**Example Success Response**:
 ```json
 {
-  "access_token": "eyJ0eXAiOiJKV1QiLCJ...",
-  "refresh_token": "1.AWMBI8niFURjXESt...",
+  "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIs...",
+  "refresh_token": "M.C507_BL2.0.U.-CUx8T7JvGgwQ9z...",
   "token_type": "Bearer",
   "expires_in": 3600,
-  "scope": "User.Read openid profile offline_access",
+  "scope": "https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/User.Read",
   "user_info": {
-    "id": "68d8969c-5d12-4dd7-b439-2bdc7b2454a1",
-    "display_name": "Julian Zaw",
-    "email": "julianthant@outlook.com",
-    "given_name": "Julian",
-    "surname": "Zaw"
-  }
+    "id": "12345678-1234-1234-1234-123456789012",
+    "display_name": "John Doe",
+    "email": "john.doe@company.com",
+    "given_name": "John",
+    "surname": "Doe",
+    "role": "user",
+    "is_superuser": false
+  },
+  "session_id": "87654321-4321-4321-4321-210987654321"
 }
 ```
 
-**Response Fields:**
-- `access_token` (string): JWT access token for API authentication
-- `refresh_token` (string): Token for refreshing expired access tokens
-- `token_type` (string): Always "Bearer"
-- `expires_in` (integer): Token expiration time in seconds
-- `scope` (string): Granted OAuth scopes
-- `user_info` (object): User profile information
-
-**Error Responses:**
-- `400 Bad Request`: Invalid callback parameters or validation failure
-- `401 Unauthorized`: Authentication failed
-- `500 Internal Server Error`: Unexpected error
-
-### 3. Refresh Token
-
-Refreshes an expired access token using a valid refresh token.
-
-**Endpoint:** `POST /api/v1/auth/refresh`
-
-**Request Body:**
+**Example Error Response**:
 ```json
 {
-  "refresh_token": "1.AWMBI8niFURjXESt..."
+  "error": "Authentication Error",
+  "message": "Authorization code is required",
+  "error_code": "MISSING_AUTH_CODE",
+  "details": null,
+  "timestamp": "2025-08-26T10:30:00Z"
 }
 ```
 
-**Response:** `200 OK`
+---
+
+### POST /auth/refresh
+
+Refreshes an expired access token using a refresh token.
+
+**Method**: `POST`  
+**Path**: `/auth/refresh`  
+**Authentication**: None required (uses refresh token)
+
+**Request Model**: `RefreshTokenRequest`
+
+**Response Model**: `TokenResponse`
+
+**Example Request**:
+```bash
+curl -X POST "https://api.example.com/api/v1/auth/refresh" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -d '{
+    "refresh_token": "M.C507_BL2.0.U.-CUx8T7JvGgwQ9z...",
+    "session_id": "87654321-4321-4321-4321-210987654321"
+  }'
+```
+
+**Example Success Response**:
 ```json
 {
-  "access_token": "eyJ0eXAiOiJKV1QiLCJ...",
-  "refresh_token": "1.AWMBI8niFURjXESt...",
+  "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIs...",
+  "refresh_token": "M.C507_BL2.0.U.-CUx8T7JvGgwQ9z...",
   "token_type": "Bearer",
   "expires_in": 3600,
-  "scope": "User.Read openid profile offline_access",
+  "scope": "https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/User.Read",
   "user_info": {
-    "id": "68d8969c-5d12-4dd7-b439-2bdc7b2454a1",
-    "display_name": "Julian Zaw",
-    "email": "julianthant@outlook.com",
-    "given_name": "Julian",
-    "surname": "Zaw"
-  }
+    "id": "12345678-1234-1234-1234-123456789012",
+    "display_name": "John Doe",
+    "email": "john.doe@company.com",
+    "given_name": "John",
+    "surname": "Doe",
+    "role": "user",
+    "is_superuser": false
+  },
+  "session_id": "87654321-4321-4321-4321-210987654321"
 }
 ```
 
-**Error Responses:**
-- `401 Unauthorized`: Invalid or expired refresh token
-- `500 Internal Server Error`: Token refresh failed
+---
 
-### 4. Get Current User
+### GET /auth/me
 
-Retrieves information about the currently authenticated user.
+Returns information about the currently authenticated user.
 
-**Endpoint:** `GET /api/v1/auth/me`
+**Method**: `GET`  
+**Path**: `/auth/me`  
+**Authentication**: Required (Bearer token)
 
-**Headers:**
+**Response Model**: `UserInfo`
+
+**Example Request**:
+```bash
+curl -X GET "https://api.example.com/api/v1/auth/me" \
+  -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIs..." \
+  -H "Accept: application/json"
 ```
-Authorization: Bearer <access_token>
-```
 
-**Response:** `200 OK`
+**Example Response**:
 ```json
 {
-  "id": "68d8969c-5d12-4dd7-b439-2bdc7b2454a1",
-  "display_name": "Julian Zaw",
-  "email": "julianthant@outlook.com",
-  "given_name": "Julian",
-  "surname": "Zaw"
+  "id": "12345678-1234-1234-1234-123456789012",
+  "display_name": "John Doe",
+  "email": "john.doe@company.com",
+  "given_name": "John",
+  "surname": "Doe",
+  "role": "user",
+  "is_superuser": false
 }
 ```
 
-**Error Responses:**
-- `401 Unauthorized`: Invalid or expired access token
-- `500 Internal Server Error`: Unable to retrieve user information
+---
 
-### 5. Get Authentication Status
+### GET /auth/status
 
-Checks the current authentication status without requiring authentication.
+Returns current authentication status for the request.
 
-**Endpoint:** `GET /api/v1/auth/status`
+**Method**: `GET`  
+**Path**: `/auth/status`  
+**Authentication**: Optional (Bearer token)
 
-**Response:** `200 OK`
+**Response Model**: `AuthStatus`
+
+**Example Request**:
+```bash
+curl -X GET "https://api.example.com/api/v1/auth/status" \
+  -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIs..." \
+  -H "Accept: application/json"
+```
+
+**Example Authenticated Response**:
 ```json
 {
   "is_authenticated": true,
   "user_info": {
-    "id": "68d8969c-5d12-4dd7-b439-2bdc7b2454a1",
-    "display_name": "Julian Zaw",
-    "email": "julianthant@outlook.com",
-    "given_name": "Julian",
-    "surname": "Zaw"
+    "id": "12345678-1234-1234-1234-123456789012",
+    "display_name": "John Doe",
+    "email": "john.doe@company.com",
+    "given_name": "John",
+    "surname": "Doe",
+    "role": "user",
+    "is_superuser": false
   },
   "expires_at": null
 }
 ```
 
-**Response (Unauthenticated):**
+**Example Unauthenticated Response**:
 ```json
 {
   "is_authenticated": false,
@@ -171,20 +270,32 @@ Checks the current authentication status without requiring authentication.
 }
 ```
 
-### 6. Logout
+---
 
-Logs out the user and cleans up the session.
+### POST /auth/logout
 
-**Endpoint:** `POST /api/v1/auth/logout`
+Logs out the current user and revokes the session.
 
-**Request Body (Optional):**
-```json
-{
-  "session_id": "optional-session-identifier"
-}
+**Method**: `POST`  
+**Path**: `/auth/logout`  
+**Authentication**: None required
+
+**Request Parameters**:
+- `session_id` (string, optional): Session identifier to revoke
+
+**Response Model**: `LogoutResponse`
+
+**Example Request**:
+```bash
+curl -X POST "https://api.example.com/api/v1/auth/logout" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -d '{
+    "session_id": "87654321-4321-4321-4321-210987654321"
+  }'
 ```
 
-**Response:** `200 OK`
+**Example Response**:
 ```json
 {
   "success": true,
@@ -192,107 +303,295 @@ Logs out the user and cleans up the session.
 }
 ```
 
-**Error Response:**
-```json
-{
-  "success": false,
-  "message": "Logout failed"
-}
+## Request/Response Models
+
+### TokenResponse
+```python
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: Optional[str] = None
+    token_type: str = "Bearer"
+    expires_in: int
+    scope: str
+    user_info: UserInfo
+    session_id: Optional[str] = None
 ```
 
-## Authentication Headers
-
-For protected endpoints, include the access token in the Authorization header:
-
+### UserInfo
+```python
+class UserInfo(BaseModel):
+    id: str  # Azure AD object ID
+    display_name: str
+    email: str
+    given_name: Optional[str] = None
+    surname: Optional[str] = None
+    role: UserRole = UserRole.USER
+    is_superuser: bool = False
 ```
-Authorization: Bearer <access_token>
+
+### RefreshTokenRequest
+```python
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+    session_id: Optional[str] = None
 ```
 
-## OAuth Scopes
+### AuthStatus
+```python
+class AuthStatus(BaseModel):
+    is_authenticated: bool
+    user_info: Optional[UserInfo] = None
+    expires_at: Optional[datetime] = None
+```
 
-The application requests the following OAuth 2.0 scopes:
-
-- `User.Read`: Read basic user profile information
-- `openid`: OpenID Connect authentication
-- `profile`: Access to user's profile information  
-- `offline_access`: Ability to refresh tokens
+### LogoutResponse
+```python
+class LogoutResponse(BaseModel):
+    success: bool
+    message: str
+```
 
 ## Error Handling
 
-All authentication endpoints return consistent error responses:
+### HTTP Status Codes
+
+| Status Code | Description | When It Occurs |
+|-------------|-------------|----------------|
+| 200 | Success | Request processed successfully |
+| 302 | Found | Login redirect to Azure AD |
+| 400 | Bad Request | Invalid request parameters |
+| 401 | Unauthorized | Invalid or expired access token |
+| 403 | Forbidden | Insufficient permissions |
+| 500 | Internal Server Error | Server-side error |
+
+### Error Response Format
+
+All error responses follow this standard format:
 
 ```json
 {
-  "error": "Authentication Error",
-  "message": "Detailed error message",
-  "error_code": "AUTH_001",
+  "error": "Error Type",
+  "message": "Human-readable error message",
+  "error_code": "MACHINE_READABLE_CODE",
   "details": {
-    "operation": "token_exchange"
+    "additional": "error details"
   },
-  "timestamp": "2025-08-22T05:52:23.120Z"
+  "timestamp": "2025-08-26T10:30:00Z"
 }
 ```
 
-**Common Error Codes:**
-- `AUTH_001`: Invalid credentials
-- `AUTH_002`: Token expired
-- `AUTH_003`: Insufficient permissions
-- `AUTH_004`: Invalid OAuth callback
-- `AUTH_005`: Session expired
+### Common Error Codes
 
-## Rate Limiting
-
-Authentication endpoints are subject to rate limiting:
-- Login initiation: 10 requests per minute per IP
-- Token refresh: 30 requests per minute per user
-- Status checks: 100 requests per minute per IP
+| Error Code | Description | Resolution |
+|------------|-------------|------------|
+| `MISSING_AUTH_CODE` | Authorization code not provided | Check OAuth callback parameters |
+| `INVALID_STATE` | CSRF state validation failed | Restart login flow |
+| `SESSION_EXPIRED` | OAuth state session expired | Restart login flow |
+| `TOKEN_REFRESH_FAILED` | Cannot refresh access token | Re-authenticate user |
+| `INVALID_REFRESH_TOKEN` | Refresh token is invalid or expired | Re-authenticate user |
 
 ## Security Considerations
 
-1. **PKCE**: All OAuth flows use Proof Key for Code Exchange
-2. **State Parameter**: CSRF protection via state parameter validation
-3. **Token Storage**: Tokens should be stored securely on the client side
-4. **HTTPS Only**: All authentication must use HTTPS in production
-5. **Token Expiration**: Access tokens expire after 1 hour
-6. **Refresh Rotation**: Refresh tokens may rotate on use
+### CSRF Protection
+- All OAuth flows use cryptographically secure state parameters
+- State parameters expire after 10 minutes
+- State validation is enforced on callback
 
-## Integration Examples
+### Token Security
+- Access tokens are short-lived (1 hour default)
+- Refresh tokens are securely stored in database
+- All token operations are logged for audit
 
-### Frontend Integration
+### Session Management
+- Sessions include IP address and user agent for tracking
+- Expired sessions are automatically cleaned up
+- Sessions can be explicitly revoked
 
-```javascript
-// Initiate login
-const loginResponse = await fetch('/api/v1/auth/login');
-const { auth_url } = await loginResponse.json();
-window.location.href = auth_url;
+### HTTPS Requirements
+- All authentication endpoints require HTTPS in production
+- Tokens are transmitted securely
+- CORS policies restrict cross-origin access
 
-// Check authentication status
-const statusResponse = await fetch('/api/v1/auth/status');
-const { is_authenticated, user_info } = await statusResponse.json();
+## Examples
 
-// Make authenticated requests
-const apiResponse = await fetch('/api/v1/protected-endpoint', {
-  headers: {
-    'Authorization': `Bearer ${access_token}`
-  }
-});
+### Complete Authentication Flow
+
+```bash
+#!/bin/bash
+
+# 1. Initiate login (this will redirect to Azure AD)
+echo "Step 1: Initiating login..."
+curl -i -X GET "https://api.example.com/api/v1/auth/login"
+
+# 2. After user authenticates, Azure AD will call callback
+# The response will be a TokenResponse JSON
+
+# 3. Use the access token for API calls
+ACCESS_TOKEN="eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIs..."
+
+echo "Step 3: Making authenticated API call..."
+curl -X GET "https://api.example.com/api/v1/mail/messages" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Accept: application/json"
+
+# 4. Refresh token when needed
+REFRESH_TOKEN="M.C507_BL2.0.U.-CUx8T7JvGgwQ9z..."
+SESSION_ID="87654321-4321-4321-4321-210987654321"
+
+echo "Step 4: Refreshing token..."
+curl -X POST "https://api.example.com/api/v1/auth/refresh" \
+  -H "Content-Type: application/json" \
+  -d "{\"refresh_token\":\"$REFRESH_TOKEN\",\"session_id\":\"$SESSION_ID\"}"
 ```
 
-### Token Refresh
+### JavaScript Client Example
 
 ```javascript
-async function refreshToken(refreshToken) {
-  const response = await fetch('/api/v1/auth/refresh', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refresh_token: refreshToken })
-  });
-  
-  if (response.ok) {
-    return await response.json();
-  } else {
-    // Redirect to login
-    window.location.href = '/login';
-  }
+class ScribeAuth {
+    constructor(baseUrl) {
+        this.baseUrl = baseUrl;
+        this.accessToken = localStorage.getItem('scribe_access_token');
+        this.refreshToken = localStorage.getItem('scribe_refresh_token');
+        this.sessionId = localStorage.getItem('scribe_session_id');
+    }
+
+    async login() {
+        // Redirect to login endpoint
+        window.location.href = `${this.baseUrl}/api/v1/auth/login`;
+    }
+
+    async handleCallback() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        const error = urlParams.get('error');
+
+        if (error) {
+            throw new Error(`Authentication failed: ${error}`);
+        }
+
+        if (!code) {
+            throw new Error('No authorization code received');
+        }
+
+        // The API will handle the callback automatically
+        // Tokens will be in the response JSON
+    }
+
+    async refreshAccessToken() {
+        if (!this.refreshToken) {
+            throw new Error('No refresh token available');
+        }
+
+        const response = await fetch(`${this.baseUrl}/api/v1/auth/refresh`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                refresh_token: this.refreshToken,
+                session_id: this.sessionId
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('Token refresh failed');
+        }
+
+        const data = await response.json();
+        this.storeTokens(data);
+        return data;
+    }
+
+    async makeAuthenticatedRequest(url, options = {}) {
+        if (!this.accessToken) {
+            throw new Error('No access token available');
+        }
+
+        const response = await fetch(url, {
+            ...options,
+            headers: {
+                ...options.headers,
+                'Authorization': `Bearer ${this.accessToken}`,
+                'Content-Type': 'application/json',
+            }
+        });
+
+        // Auto-refresh token if expired
+        if (response.status === 401 && this.refreshToken) {
+            await this.refreshAccessToken();
+            
+            // Retry original request
+            return fetch(url, {
+                ...options,
+                headers: {
+                    ...options.headers,
+                    'Authorization': `Bearer ${this.accessToken}`,
+                    'Content-Type': 'application/json',
+                }
+            });
+        }
+
+        return response;
+    }
+
+    storeTokens(tokenResponse) {
+        this.accessToken = tokenResponse.access_token;
+        this.refreshToken = tokenResponse.refresh_token;
+        this.sessionId = tokenResponse.session_id;
+
+        localStorage.setItem('scribe_access_token', this.accessToken);
+        localStorage.setItem('scribe_refresh_token', this.refreshToken);
+        localStorage.setItem('scribe_session_id', this.sessionId);
+    }
+
+    async logout() {
+        const response = await fetch(`${this.baseUrl}/api/v1/auth/logout`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                session_id: this.sessionId
+            })
+        });
+
+        // Clear local storage regardless of response
+        localStorage.removeItem('scribe_access_token');
+        localStorage.removeItem('scribe_refresh_token');
+        localStorage.removeItem('scribe_session_id');
+
+        this.accessToken = null;
+        this.refreshToken = null;
+        this.sessionId = null;
+
+        return response.ok;
+    }
 }
+
+// Usage example
+const auth = new ScribeAuth('https://api.example.com');
+
+// Login
+await auth.login();
+
+// Make authenticated request
+const response = await auth.makeAuthenticatedRequest('/api/v1/mail/messages');
+const mailData = await response.json();
+
+// Logout
+await auth.logout();
 ```
+
+---
+
+**File References:**
+- Auth Endpoints: `app/api/v1/endpoints/auth.py:1-234`
+- Auth Models: `app/models/AuthModel.py:1-150`
+- OAuth Service: `app/services/OAuthService.py:1-415`
+- Dependencies: `app/dependencies/Auth.py:1-100`
+
+**Related Documentation:**
+- [OAuth Service](../services/oauth-service.md)
+- [Azure Integration](../azure/auth-service.md)
+- [Security Guide](../guides/security.md)
+- [Architecture Overview](../architecture/overview.md)

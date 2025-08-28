@@ -1,204 +1,279 @@
-# Scribe API Architecture Overview
+# Scribe System Architecture Overview
 
-## System Architecture
+The Scribe application is a FastAPI-based mail management system that integrates with Microsoft Azure services to provide shared mailbox access and voice transcription capabilities.
 
-The Scribe API follows a layered architecture pattern with clear separation of concerns:
+## Table of Contents
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    API Layer (FastAPI)                      │
-├─────────────────────────────────────────────────────────────┤
-│                    Service Layer                            │
-├─────────────────────────────────────────────────────────────┤
-│                  Repository Layer                           │
-├─────────────────────────────────────────────────────────────┤
-│                   Data Layer                                │
-└─────────────────────────────────────────────────────────────┘
+1. [System Overview](#system-overview)
+2. [High-Level Architecture](#high-level-architecture)
+3. [Core Components](#core-components)
+4. [Technology Stack](#technology-stack)
+5. [Integration Points](#integration-points)
+6. [Data Flow](#data-flow)
+7. [Security Architecture](#security-architecture)
+
+## System Overview
+
+Scribe is designed as a modern, cloud-native application that enables employees to:
+- Access shared mailboxes through Azure AD authentication
+- Process voice attachments with transcription services
+- Manage mail operations with proper permission controls
+- Monitor and audit mail activities
+
+### Key Design Principles
+- **Cloud-Native**: Built for Azure Functions and cloud deployment
+- **Security-First**: Azure AD integration with RBAC
+- **Scalable**: Stateless design with in-memory caching
+- **Maintainable**: Clean architecture with separation of concerns
+
+## High-Level Architecture
+
+```mermaid
+graph TB
+    subgraph "Client Layer"
+        CLI[Client Application]
+        WEB[Web Interface]
+        API_CLIENT[API Client]
+    end
+    
+    subgraph "Application Layer"
+        FASTAPI[FastAPI Application]
+        AUTH[Authentication]
+        ENDPOINTS[API Endpoints]
+        MIDDLEWARE[Middleware]
+    end
+    
+    subgraph "Service Layer"
+        OAUTH[OAuth Service]
+        MAIL[Mail Service]
+        SHARED[Shared Mailbox Service]
+        TRANS[Transcription Service]
+        VOICE[Voice Attachment Service]
+    end
+    
+    subgraph "Data Layer"
+        REPO[Repositories]
+        MODELS[Database Models]
+        CACHE[In-Memory Cache]
+    end
+    
+    subgraph "Azure Services"
+        AAD[Azure AD]
+        GRAPH[Microsoft Graph API]
+        BLOB[Azure Blob Storage]
+        AI[Azure AI Foundry]
+        DB[Azure SQL Database]
+    end
+    
+    CLI --> FASTAPI
+    WEB --> FASTAPI
+    API_CLIENT --> FASTAPI
+    
+    FASTAPI --> AUTH
+    FASTAPI --> ENDPOINTS
+    FASTAPI --> MIDDLEWARE
+    
+    ENDPOINTS --> OAUTH
+    ENDPOINTS --> MAIL
+    ENDPOINTS --> SHARED
+    ENDPOINTS --> TRANS
+    ENDPOINTS --> VOICE
+    
+    OAUTH --> REPO
+    MAIL --> REPO
+    SHARED --> REPO
+    TRANS --> REPO
+    VOICE --> REPO
+    
+    REPO --> MODELS
+    REPO --> CACHE
+    
+    OAUTH --> AAD
+    MAIL --> GRAPH
+    SHARED --> GRAPH
+    TRANS --> AI
+    VOICE --> BLOB
+    MODELS --> DB
 ```
 
 ## Core Components
 
-### 1. API Layer (`app/api/`)
-- **Purpose**: Handle HTTP requests and responses
-- **Technology**: FastAPI with Pydantic v2 for validation
-- **Components**:
-  - Endpoints: Define API routes and request handlers
-  - Dependencies: Dependency injection for services
-  - Router: Organize endpoints by version
+### 1. FastAPI Application (`app/main.py`)
+Central application entry point that configures:
+- **CORS middleware** for cross-origin requests
+- **Request logging** for API monitoring
+- **Exception handlers** for standardized error responses
+- **Router integration** for API versioning
 
-### 2. Service Layer (`app/services/`)
-- **Purpose**: Business logic and orchestration
-- **Responsibilities**:
-  - Validate business rules
-  - Coordinate between repositories
-  - Transform data between layers
-  - Handle business exceptions
+### 2. API Layer (`app/api/`)
+RESTful API endpoints organized by feature:
+- **Authentication** (`/auth`) - OAuth flow management
+- **Mail** (`/mail`) - Personal mailbox operations
+- **Shared Mailbox** (`/shared-mailbox`) - Shared mailbox access
+- **Transcription** (`/transcription`) - Voice processing
 
-### 3. Repository Layer (`app/repositories/`)
-- **Purpose**: Data access abstraction
-- **Pattern**: Repository pattern for testability
-- **Benefits**:
-  - Decouples business logic from data storage
-  - Enables easy mocking for tests
-  - Provides consistent data access interface
+### 3. Service Layer (`app/services/`)
+Business logic implementation:
+- **OAuthService** - Azure AD authentication flow
+- **MailService** - Mail operations and Graph API integration
+- **SharedMailboxService** - Shared mailbox management
+- **TranscriptionService** - Voice transcription processing
+- **VoiceAttachmentService** - Voice file handling
 
-### 4. Core Layer (`app/core/`)
-- **Purpose**: Shared infrastructure and configuration
-- **Components**:
-  - Configuration management
-  - Exception handling
-  - Logging utilities
-  - Security helpers
+### 4. Data Access Layer (`app/repositories/`)
+Database operations using Repository pattern:
+- **BaseRepository** - Common CRUD operations
+- **UserRepository** - User and session management
+- **MailRepository** - Mail data persistence
+- **TranscriptionRepository** - Voice transcription data
 
-### 5. Models Layer (`app/models/`)
-- **Purpose**: Data structures and validation
-- **Types**:
-  - Schemas: Pydantic models for API validation
-  - Database: Entity models for data persistence
-  - Enums: Shared constants and enumerations
+### 5. Azure Integration (`app/azure/`)
+Azure service integrations:
+- **AzureAuthService** - Azure AD OAuth operations
+- **AzureGraphService** - Microsoft Graph API base client
+- **AzureMailService** - Graph API mail operations
+- **AzureBlobService** - Blob storage for voice files
+- **AzureAIFoundryService** - AI transcription services
 
-## Design Principles
+## Technology Stack
 
-### SOLID Principles
-1. **Single Responsibility**: Each class has one reason to change
-2. **Open/Closed**: Open for extension, closed for modification
-3. **Liskov Substitution**: Subtypes must be substitutable for base types
-4. **Interface Segregation**: No client should depend on unused interfaces
-5. **Dependency Inversion**: Depend on abstractions, not concretions
+### Backend Framework
+- **FastAPI**: Modern Python web framework
+- **Python 3.11+**: Latest Python features and performance
+- **SQLAlchemy**: ORM for database operations
+- **Alembic**: Database migration management
+- **Dynaconf**: Configuration management
 
-### Additional Principles
-- **DRY (Don't Repeat Yourself)**: Eliminate code duplication
-- **KISS (Keep It Simple, Stupid)**: Favor simplicity over complexity
-- **Separation of Concerns**: Each layer has distinct responsibilities
-- **Fail Fast**: Validate inputs early and provide clear error messages
+### Database
+- **Azure SQL Database**: Primary data store
+- **Third Normal Form (3NF)**: Normalized database design
+- **Row-Level Security (RLS)**: Data isolation per tenant
 
-## Error Handling Strategy
+### Azure Services
+- **Azure AD**: Identity and access management
+- **Microsoft Graph API**: Office 365 integration
+- **Azure Blob Storage**: File storage for voice attachments
+- **Azure AI Foundry**: Speech-to-text transcription
+- **Azure Functions**: Serverless deployment option
 
-### Exception Hierarchy
-```
-ScribeBaseException
-├── ValidationError
-├── NotFoundError
-├── AuthenticationError
-├── AuthorizationError
-├── DatabaseError
-├── ExternalServiceError
-└── RateLimitError
-```
+### Development Tools
+- **pytest**: Testing framework
+- **Black**: Code formatting
+- **isort**: Import sorting
+- **mypy**: Static type checking
 
-### Error Response Format
-All errors follow a consistent JSON structure:
-```json
-{
-  "error": "Error Type",
-  "message": "Human-readable message",
-  "error_code": "MACHINE_READABLE_CODE",
-  "details": {"field": "additional_info"},
-  "timestamp": "2024-01-01T12:00:00Z"
-}
-```
+## Integration Points
 
-## Testing Strategy
-
-### Test Pyramid
-```
-           /\
-          /  \
-         / E2E \
-        /______\
-       /        \
-      /Integration\
-     /____________\
-    /              \
-   /   Unit Tests   \
-  /________________\
+### 1. Azure AD Integration
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant F as FastAPI
+    participant O as OAuth Service
+    participant AD as Azure AD
+    participant G as Graph API
+    
+    U->>F: GET /auth/login
+    F->>O: initiate_login()
+    O->>AD: Get authorization URL
+    AD-->>O: Return auth URL + state
+    O-->>F: Return auth data
+    F-->>U: Redirect to Azure AD
+    
+    U->>AD: Authenticate
+    AD->>F: Callback with auth code
+    F->>O: handle_callback()
+    O->>AD: Exchange code for tokens
+    AD-->>O: Access + refresh tokens
+    O->>G: Get user profile
+    G-->>O: User information
+    O-->>F: TokenResponse
+    F-->>U: Authentication complete
 ```
 
-### Test Types
-1. **Unit Tests** (70%): Test individual components in isolation
-2. **Integration Tests** (20%): Test component interactions
-3. **End-to-End Tests** (10%): Test complete user workflows
+### 2. Mail Service Integration
+```mermaid
+graph LR
+    subgraph "Scribe Application"
+        MS[Mail Service]
+        SMS[Shared Mailbox Service]
+    end
+    
+    subgraph "Microsoft Graph API"
+        ME[/me/messages]
+        USERS[/users/{email}/messages]
+        FOLDERS[/users/{email}/mailFolders]
+    end
+    
+    MS --> ME
+    SMS --> USERS
+    SMS --> FOLDERS
+```
 
-### Coverage Requirements
-- **Minimum**: 80% overall code coverage
-- **Critical paths**: 95% coverage for business logic
-- **Repositories**: 90% coverage for data access layer
+### 3. Voice Processing Pipeline
+```mermaid
+flowchart TD
+    A[Voice Attachment Received] --> B[Store in Azure Blob]
+    B --> C[Extract Metadata]
+    C --> D[Queue for Transcription]
+    D --> E[Azure AI Foundry Processing]
+    E --> F[Store Transcription Results]
+    F --> G[Update Database]
+    G --> H[Notify User]
+```
 
-## Security Considerations
+## Data Flow
 
-### Input Validation
-- All inputs validated using Pydantic v2 models
-- SQL injection prevention through parameterized queries
-- XSS protection through proper output encoding
+### Authentication Data Flow
+1. **User Authentication**: OAuth flow with Azure AD
+2. **Token Management**: Access and refresh token storage
+3. **User Profile**: Sync from Azure AD to local database
+4. **Session Management**: Track active user sessions
+
+### Mail Processing Data Flow
+1. **Authorization**: Validate user access to mailbox
+2. **Graph API Query**: Retrieve mail data from Microsoft Graph
+3. **Data Processing**: Transform and filter mail data
+4. **Caching**: Store frequently accessed data in memory
+5. **Response**: Return processed data to client
+
+### Voice Processing Data Flow
+1. **File Upload**: Store voice file in Azure Blob Storage
+2. **Metadata Extraction**: Extract file information
+3. **Transcription**: Process audio with Azure AI Foundry
+4. **Result Storage**: Store transcription in database
+5. **Status Updates**: Notify about processing completion
+
+## Security Architecture
 
 ### Authentication & Authorization
-- JWT-based authentication (when implemented)
-- Role-based access control
-- Rate limiting on sensitive endpoints
+- **OAuth 2.0**: Industry-standard authentication
+- **JWT Tokens**: Stateless authentication tokens
+- **Role-Based Access Control (RBAC)**: User and superuser roles
+- **Session Management**: Secure session tracking
 
 ### Data Protection
-- Secrets managed via environment variables
-- Sensitive data excluded from logs
-- HTTPS enforced in production
+- **Azure AD Integration**: Centralized identity management
+- **TLS/SSL**: Encrypted data transmission
+- **Database Security**: RLS and connection security
+- **Secret Management**: Dynaconf with environment variables
 
-## Performance Considerations
+### API Security
+- **CORS Configuration**: Controlled cross-origin access
+- **Rate Limiting**: Prevent API abuse
+- **Request Validation**: Input sanitization and validation
+- **Error Handling**: Secure error responses without data leakage
 
-### Async/Await Pattern
-- All I/O operations are asynchronous
-- Proper connection pooling for databases
-- Concurrent request processing
+---
 
-### Caching Strategy
-- Redis for session storage (when implemented)
-- Application-level caching for expensive operations
-- HTTP caching headers for appropriate endpoints
+**File References:**
+- FastAPI App: `app/main.py:1-402`
+- OAuth Service: `app/services/OAuthService.py:1-415`
+- Azure Integration: `app/azure/AzureAuthService.py`, `app/azure/AzureGraphService.py`
+- Database Models: `app/db/models/`
 
-### Monitoring
-- Structured logging with correlation IDs
-- Performance metrics collection
-- Error rate monitoring
-- Response time tracking
-
-## Deployment Architecture
-
-### Development Environment
-```
-Developer Machine
-├── FastAPI Application (uvicorn)
-├── Local Database (SQLite)
-└── Development Tools (pytest, black, mypy)
-```
-
-### Production Environment
-```
-Load Balancer
-├── FastAPI Application (gunicorn + uvicorn workers)
-├── Database (PostgreSQL)
-├── Cache (Redis)
-└── Monitoring (Prometheus + Grafana)
-```
-
-## Configuration Management
-
-### Environment-Specific Settings
-- Development: Debug enabled, verbose logging
-- Testing: In-memory database, minimal logging
-- Production: Optimized settings, structured logging
-
-### Security Configuration
-- All secrets managed via environment variables
-- Different CORS settings per environment
-- Rate limiting tuned per environment needs
-
-## Future Considerations
-
-### Scalability
-- Microservices architecture for larger scale
-- Database sharding strategies
-- Message queue integration
-
-### Features
-- WebSocket support for real-time updates
-- File upload handling
-- Background task processing
-- API versioning strategy
+**Related Documentation:**
+- [Components Detail](components.md)
+- [Data Flow Diagrams](data-flow.md)
+- [Infrastructure Guide](infrastructure.md)
+- [Security Guide](../guides/security.md)

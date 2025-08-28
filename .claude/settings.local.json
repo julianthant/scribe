@@ -15,6 +15,9 @@
       "Bash(alembic revision:*)"
     ],
     "deny": [],
-    "ask": []
+    "ask": [],
+    "additionalDirectories": [
+      "C:\\c\\Users\\Julian\\Projects"
+    ]
   }
 }

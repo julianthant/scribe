@@ -59,6 +59,11 @@ class DatabaseManager:
         # Connection string with SQL Server authentication
         driver_name = '{ODBC Driver 18 for SQL Server}'
         
+        # Use configurable timeouts for Azure SQL Database
+        connection_timeout = getattr(settings, 'database_connection_timeout', 30)
+        command_timeout = getattr(settings, 'database_command_timeout', 60)
+        login_timeout = getattr(settings, 'database_login_timeout', 30)
+        
         base_connection_string = (
             f'Driver={driver_name};'
             f'Server=tcp:{database_server},1433;'
@@ -67,8 +72,9 @@ class DatabaseManager:
             f'Pwd={password};'
             f'Encrypt=yes;'
             f'TrustServerCertificate=no;'
-            f'Connection Timeout=30;'
-            f'Command Timeout=120'
+            f'Connection Timeout={connection_timeout};'
+            f'Command Timeout={command_timeout};'
+            f'LoginTimeout={login_timeout}'
         )
         
         # URL encode the connection string
@@ -112,14 +118,20 @@ class DatabaseManager:
         driver_name = '{ODBC Driver 18 for SQL Server}'
         
         # Build base connection string without username/password for Azure AD
+        # Use configurable timeouts for Azure SQL Database
+        connection_timeout = getattr(settings, 'database_connection_timeout', 30)
+        command_timeout = getattr(settings, 'database_command_timeout', 60)
+        login_timeout = getattr(settings, 'database_login_timeout', 30)
+        
         base_connection_string = (
             f'Driver={driver_name};'
             f'Server=tcp:{database_server},1433;'
             f'Database={database_name};'
             f'Encrypt=yes;'
             f'TrustServerCertificate=no;'
-            f'Connection Timeout=120;'
-            f'Command Timeout=120'
+            f'Connection Timeout={connection_timeout};'
+            f'Command Timeout={command_timeout};'
+            f'LoginTimeout={login_timeout}'
         )
         
         # URL encode the connection string
@@ -261,15 +273,28 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to clear RLS context: {e}")
     
-    async def health_check(self) -> bool:
-        """Check database connectivity."""
-        try:
-            async with self.get_async_session() as session:
-                result = await session.execute(text("SELECT 1"))
-                return result.scalar() == 1
-        except Exception as e:
-            logger.error(f"Database health check failed: {e}")
-            return False
+    async def health_check(self, max_retries: int = 2) -> bool:
+        """Check database connectivity with retry mechanism."""
+        import asyncio
+        
+        for attempt in range(max_retries + 1):
+            try:
+                async with self.get_async_session() as session:
+                    result = await session.execute(text("SELECT 1"))
+                    is_healthy = result.scalar() == 1
+                    if is_healthy and attempt > 0:
+                        logger.info(f"Database connection successful on attempt {attempt + 1}")
+                    return is_healthy
+            except Exception as e:
+                if attempt < max_retries:
+                    wait_time = (attempt + 1) * 2  # Exponential backoff: 2, 4 seconds
+                    logger.warning(f"Database health check failed (attempt {attempt + 1}/{max_retries + 1}): {e}")
+                    logger.info(f"Retrying database connection in {wait_time} seconds...")
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.error(f"Database health check failed after {max_retries + 1} attempts: {e}")
+                    return False
+        return False
     
     async def get_database_info(self) -> Dict[str, Any]:
         """Get information about the database."""

@@ -21,6 +21,7 @@ from app.models.DatabaseModel import Base, TimestampMixin, UUIDMixin, create_ema
 if False:  # TYPE_CHECKING
     from .User import User
     from .MailData import MailMessage
+    from .Transcription import VoiceTranscription
 
 
 class VoiceAttachment(Base, UUIDMixin, TimestampMixin):
@@ -68,6 +69,7 @@ class VoiceAttachment(Base, UUIDMixin, TimestampMixin):
     # Relationships
     user: Mapped["User"] = relationship("User")
     downloads: Mapped[List["VoiceAttachmentDownload"]] = relationship("VoiceAttachmentDownload", back_populates="attachment", cascade="all, delete-orphan")
+    transcription: Mapped[Optional["VoiceTranscription"]] = relationship("VoiceTranscription", back_populates="voice_attachment", cascade="all, delete-orphan", uselist=False)
 
     # Constraints and indexes
     __table_args__ = (

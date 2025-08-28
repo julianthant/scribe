@@ -146,6 +146,10 @@ local_settings.py
 .env.local
 .env.production
 
+# Test secrets (never commit test secrets)
+tests/.test.secrets.toml
+.test.secrets.toml
+
 # Azure and Cloud specific
 .azure/
 azure.log

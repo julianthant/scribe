@@ -35,6 +35,11 @@ database_max_overflow = 20
 database_pool_timeout = 30
 database_pool_recycle = 3600
 database_connection_retry = 3
+# Azure SQL Database connection timeouts (seconds)
+database_connection_timeout = 30
+database_command_timeout = 60
+database_login_timeout = 30
+database_health_check_timeout = 45
 
 # Azure SQL Server specific settings
 azure_database_use_access_token = true
@@ -125,7 +130,8 @@ azure_scopes = [
     "Mail.Send",
     "Mail.Read.Shared",
     "Mail.ReadWrite.Shared", 
-    "Mail.Send.Shared"
+    "Mail.Send.Shared",
+    "Files.ReadWrite"
 ]
 
 # -----------------------------------------------------------------------------
@@ -140,6 +146,44 @@ blob_storage_default_expiry_days = 90
 blob_storage_sas_expiry_hours = 24
 blob_storage_enable_compression = false
 blob_storage_public_access = false
+
+# -----------------------------------------------------------------------------
+# Azure AI Foundry (Voice Transcription)
+# -----------------------------------------------------------------------------
+azure_openai_endpoint = "https://scribe-openai.openai.azure.com"
+azure_openai_api_version = "2024-10-21"
+transcription_model_deployment = "whisper"
+transcription_default_language = "en"
+transcription_max_concurrent_requests = 3
+transcription_retry_attempts = 2
+transcription_timeout_seconds = 300
+transcription_enable_word_timestamps = true
+transcription_enable_segment_timestamps = true
+transcription_default_temperature = 0.0
+
+# -----------------------------------------------------------------------------
+# Excel Transcription Sync (OneDrive)
+# -----------------------------------------------------------------------------
+excel_sync_enabled = true
+excel_file_name = "Transcripts"
+excel_auto_format = true
+excel_max_retry_attempts = 3
+excel_sync_batch_size = 100
+excel_sync_timeout_seconds = 120
+excel_worksheet_date_format = "%B %Y"  # "December 2024"
+# Excel column widths configuration
+[default.excel_column_widths]
+ID = 25
+Date_Time = 20
+Sender_Name = 25
+Sender_Email = 30
+Subject = 40
+Audio_Duration = 15
+Transcript_Text = 80
+Confidence_Score = 18
+Language = 12
+Model_Used = 20
+Processing_Time = 18
 
 # =============================================================================
 # DEVELOPMENT ENVIRONMENT

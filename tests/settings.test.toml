@@ -1,0 +1,222 @@
+# =============================================================================
+# TEST ENVIRONMENT CONFIGURATION
+# =============================================================================
+# Configuration settings for testing environment
+# This file contains non-sensitive test configuration
+# Sensitive test data goes in .test.secrets.toml (gitignored)
+
+[testing]
+# =============================================================================
+# CORE APPLICATION SETTINGS
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Application Metadata
+# -----------------------------------------------------------------------------
+app_name = "Scribe API Test"
+app_version = "1.0.0-test"
+debug = true
+api_v1_prefix = "/api/v1"
+
+# -----------------------------------------------------------------------------
+# Security Configuration (Test Values)
+# -----------------------------------------------------------------------------
+algorithm = "HS256"
+access_token_expire_minutes = 5  # Short expiry for testing
+
+# -----------------------------------------------------------------------------
+# Database Configuration (In-Memory SQLite)
+# -----------------------------------------------------------------------------
+database_server = ":memory:"
+database_name = ":memory:"
+database_echo = false
+show_sql_queries = false
+database_pool_size = 1
+database_max_overflow = 0
+database_pool_timeout = 5
+database_pool_recycle = 300
+database_connection_retry = 1
+
+# Azure SQL Server specific settings (disabled for testing)
+azure_database_use_access_token = false
+azure_database_enable_snapshot_isolation = false
+
+# -----------------------------------------------------------------------------
+# Row-Level Security (Disabled for Testing)
+# -----------------------------------------------------------------------------
+enable_rls = false
+rls_superuser_bypass = true
+rls_audit_logging = false
+
+# -----------------------------------------------------------------------------
+# Database Operations & Safety (Permissive for Testing)
+# -----------------------------------------------------------------------------
+database_allow_sync = true
+database_backup_path = "./test_backups"
+database_seed_path = "./test_seeds"
+database_allow_truncate = true
+database_force_cascade = true
+
+# -----------------------------------------------------------------------------
+# Database Migrations (Test Friendly)
+# -----------------------------------------------------------------------------
+alembic_config_file = "alembic.ini"
+auto_migrate_on_startup = false
+migration_timeout = 30
+migration_auto_apply = false
+migration_allow_drops = true
+migration_backup_before = false
+migration_validate_before = false
+migration_allow_empty = true
+migration_dry_run_default = false
+
+# -----------------------------------------------------------------------------
+# In-Memory Caching (Small for Testing)
+# -----------------------------------------------------------------------------
+cache_default_ttl = 60              # 1 minute for faster test cycles
+cache_max_size = 100                # Small cache for testing
+cache_cleanup_interval = 30         # Frequent cleanup
+
+# -----------------------------------------------------------------------------
+# Multi-Tenancy & Organizations (Simplified for Testing)
+# -----------------------------------------------------------------------------
+default_organization_name = "Test Organization"
+enable_multi_tenant = false
+organization_isolation_strict = false
+
+# -----------------------------------------------------------------------------
+# User Roles & Access Control (Permissive for Testing)
+# -----------------------------------------------------------------------------
+superuser_emails = ["test@example.com", "admin@test.com"]
+
+# -----------------------------------------------------------------------------
+# Cross-Origin Resource Sharing (Permissive for Testing)
+# -----------------------------------------------------------------------------
+backend_cors_origins = ["*"]
+
+# -----------------------------------------------------------------------------
+# Logging Configuration (Minimal for Testing)
+# -----------------------------------------------------------------------------
+log_level = "WARNING"  # Reduce log noise during tests
+log_format = "%(levelname)s: %(message)s"
+log_sampling_rate = 0.1
+log_async_enabled = false
+log_max_file_size = "10MB"
+log_backup_count = 2
+log_retention_days = 1
+log_redact_sensitive = true
+log_include_request_id = false
+log_performance_threshold_ms = 100.0
+
+# -----------------------------------------------------------------------------
+# Rate Limiting (Disabled for Testing)
+# -----------------------------------------------------------------------------
+rate_limit_requests = 10000         # High limit to avoid test interference
+rate_limit_window = 1               # Short window
+
+# -----------------------------------------------------------------------------
+# Azure Active Directory OAuth (Test Configuration)
+# -----------------------------------------------------------------------------
+azure_tenant_id = "test-tenant-id"
+azure_client_id = "test-client-id"
+azure_redirect_uri = "http://localhost:8000/api/v1/auth/callback"
+azure_scopes = [
+    "User.Read",
+    "Mail.Read", 
+    "Mail.ReadWrite",
+    "Mail.Send"
+]
+
+# -----------------------------------------------------------------------------
+# Azure Blob Storage (Test Configuration)
+# -----------------------------------------------------------------------------
+blob_storage_account_name = "teststorage"
+blob_storage_container_name = "test-voice-attachments"
+blob_storage_use_access_token = false
+blob_storage_max_size_mb = 10
+blob_storage_allowed_extensions = [".wav", ".mp3", ".m4a"]
+blob_storage_default_expiry_days = 1
+blob_storage_sas_expiry_hours = 1
+blob_storage_enable_compression = false
+blob_storage_public_access = false
+
+# =============================================================================
+# TEST-SPECIFIC CONFIGURATION
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Test Database Configuration
+# -----------------------------------------------------------------------------
+test_database_echo = false          # Set to true for SQL debugging
+test_database_cleanup = true        # Clean up test data after tests
+test_use_transactions = true        # Use transactions for test isolation
+
+# -----------------------------------------------------------------------------
+# Test Authentication Configuration
+# -----------------------------------------------------------------------------
+test_skip_auth = false              # Set to true to bypass auth in tests
+test_mock_azure_services = true    # Mock Azure services by default
+test_azure_timeout = 1             # Short timeout for mocked services
+
+# -----------------------------------------------------------------------------
+# Test Performance Configuration
+# -----------------------------------------------------------------------------
+test_max_execution_time = 5         # Max seconds per test
+test_memory_limit_mb = 100          # Memory limit for tests
+test_parallel_workers = 1           # Number of parallel test workers
+
+# -----------------------------------------------------------------------------
+# Test Data Configuration
+# -----------------------------------------------------------------------------
+test_data_cleanup = true            # Clean up test data after each test
+test_data_seed = false              # Don't seed data by default
+test_data_factory_size = 10         # Default size for factory-generated data
+
+# -----------------------------------------------------------------------------
+# Mock Service Configuration
+# -----------------------------------------------------------------------------
+mock_external_apis = true           # Mock all external API calls
+mock_file_operations = true         # Mock file system operations
+mock_email_sending = true           # Mock email sending
+mock_azure_storage = true           # Mock Azure blob storage operations
+
+# -----------------------------------------------------------------------------
+# Test Coverage Configuration
+# -----------------------------------------------------------------------------
+test_coverage_minimum = 80          # Minimum coverage percentage
+test_coverage_fail_under = 80       # Fail tests if coverage below this
+test_coverage_exclude = [           # Files to exclude from coverage
+    "*/migrations/*",
+    "*/tests/*",
+    "*/__init__.py"
+]
+
+# -----------------------------------------------------------------------------
+# Test Reporting Configuration
+# -----------------------------------------------------------------------------
+test_report_format = "html"         # Coverage report format
+test_report_directory = "htmlcov"   # Coverage report output directory
+test_junit_xml = "test-results.xml" # JUnit XML output file
+test_json_report = "test-report.json" # JSON test report file
+
+# -----------------------------------------------------------------------------
+# Integration Test Configuration
+# -----------------------------------------------------------------------------
+integration_test_timeout = 30       # Timeout for integration tests
+integration_test_retries = 3        # Number of retries for flaky tests
+integration_test_database = "sqlite+aiosqlite:///:memory:"
+
+# -----------------------------------------------------------------------------
+# Performance Test Configuration
+# -----------------------------------------------------------------------------
+performance_test_enabled = false    # Enable performance benchmarking
+performance_test_iterations = 100   # Number of iterations for benchmarks
+performance_test_warmup = 10        # Warmup iterations
+
+# -----------------------------------------------------------------------------
+# Security Test Configuration
+# -----------------------------------------------------------------------------
+security_test_enabled = true        # Enable security testing
+security_test_sql_injection = true  # Test SQL injection prevention
+security_test_xss = true           # Test XSS prevention
+security_test_csrf = true          # Test CSRF protection

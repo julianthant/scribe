@@ -25,6 +25,12 @@ logger = logging.getLogger(__name__)
 class AzureGraphService:
     """Microsoft Graph API service for mail operations."""
 
+    def __init__(self):
+        """Initialize Azure Graph Service."""
+        logger.info("[SERVICE] Azure Graph Service initializing...")
+        logger.info("[CONFIG] Graph API endpoint: https://graph.microsoft.com/v1.0")
+        logger.info("[OK] Azure Graph Service initialized successfully")
+
     async def get_mail_folders(self, access_token: str) -> Dict[str, Any]:
         """Get all mail folders from Microsoft Graph API.
 

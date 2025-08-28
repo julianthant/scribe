@@ -1,0 +1,102 @@
+# =====================================================================
+# DEVELOPMENT AND TESTING DEPENDENCIES
+# =====================================================================
+# Install with: pip install -r requirements-dev.txt
+# This file contains dependencies only needed for development and testing
+# Production dependencies are in requirements.txt
+
+# =====================================================================
+# TESTING FRAMEWORKS
+# =====================================================================
+pytest==8.3.3                    # Core testing framework
+pytest-asyncio==0.24.0           # Async test support for FastAPI
+pytest-cov==5.0.0                # Coverage reporting
+pytest-mock==3.14.0              # Mock fixtures and helpers
+pytest-env==1.1.5                # Environment variable management
+pytest-xdist==3.6.1              # Parallel test execution
+pytest-timeout==2.3.1            # Test timeout management
+pytest-benchmark==4.0.0          # Performance benchmarking
+
+# =====================================================================
+# MOCKING AND FIXTURES
+# =====================================================================
+faker==28.4.1                    # Generate fake test data
+factory-boy==3.3.1               # Test fixtures and factories
+freezegun==1.5.1                 # Mock datetime for testing
+responses==0.25.3                # Mock HTTP responses
+respx==0.21.1                    # Mock HTTPX requests (for async)
+
+# =====================================================================
+# DATABASE TESTING
+# =====================================================================
+aiosqlite==0.20.0                # Async SQLite for unit tests
+pytest-alembic==0.11.1           # Test Alembic migrations
+sqlalchemy-utils==0.41.2         # Database utilities for testing
+
+# =====================================================================
+# CODE QUALITY AND LINTING
+# =====================================================================
+black==24.8.0                    # Code formatting
+isort==5.13.2                    # Import sorting
+flake8==7.1.1                    # Style guide enforcement
+mypy==1.11.2                     # Static type checking
+pylint==3.2.6                    # Code analysis
+bandit==1.7.9                    # Security linting
+
+# =====================================================================
+# TYPE STUBS AND TYPING
+# =====================================================================
+types-python-dateutil==2.9.0.20240906
+types-requests==2.32.0.20240914
+types-pytz==2024.2.0.20240913
+sqlalchemy-stubs==0.4
+
+# =====================================================================
+# DOCUMENTATION
+# =====================================================================
+sphinx==8.0.2                    # Documentation generation
+sphinx-autodoc-typehints==2.3.0  # Type hints in docs
+sphinx-rtd-theme==2.0.0          # ReadTheDocs theme
+
+# =====================================================================
+# DEVELOPMENT TOOLS
+# =====================================================================
+ipython==8.27.0                  # Enhanced Python shell
+ipdb==0.13.13                    # IPython debugger
+watchdog==5.0.2                  # File system monitoring
+python-dotenv==1.0.1             # .env file support
+pre-commit==3.8.0                # Git pre-commit hooks
+
+# =====================================================================
+# PERFORMANCE AND PROFILING
+# =====================================================================
+memory-profiler==0.61.0          # Memory profiling
+py-spy==0.3.14                   # Performance profiling
+locust==2.31.8                   # Load testing
+
+# =====================================================================
+# AZURE TESTING UTILITIES
+# =====================================================================
+azure-storage-blob-stubs==12.21.0  # Type stubs for Azure Blob
+moto[s3]==5.0.14                    # Mock AWS/Azure services
+
+# =====================================================================
+# HTTP AND API TESTING
+# =====================================================================
+httpx-mock==0.3.0                # Mock HTTPX client
+pytest-httpx==0.30.0             # HTTPX testing plugin
+
+# =====================================================================
+# COVERAGE AND REPORTING
+# =====================================================================
+coverage[toml]==7.6.1            # Code coverage
+coverage-badge==1.1.2            # Generate coverage badges
+pytest-html==4.1.1               # HTML test reports
+pytest-json-report==1.5.0        # JSON test reports
+allure-pytest==2.13.5            # Allure test reporting
+
+# =====================================================================
+# SECURITY TESTING
+# =====================================================================
+safety==3.2.7                    # Security vulnerability scanning
+pip-audit==2.7.3                 # Audit pip packages

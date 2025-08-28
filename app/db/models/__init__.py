@@ -16,6 +16,8 @@ Models are organized by functional area:
 - User: Authentication and user management (with role-based access control)
 - MailAccount: Mail account and shared mailbox management
 - MailData: Mail folders only (messages handled via Graph API)
+- VoiceAttachment: Voice attachment blob storage and download tracking
+- Transcription: Voice transcription data with segments and error tracking
 - Operational: Sync status and audit logging
 """
 
@@ -23,6 +25,9 @@ Models are organized by functional area:
 from .User import User, UserProfile, Session, UserRole
 from .MailAccount import MailAccount, SharedMailbox
 from .MailData import MailFolder
+from .VoiceAttachment import VoiceAttachment, VoiceAttachmentDownload
+from .Transcription import VoiceTranscription, TranscriptionSegment, TranscriptionError
+from .ExcelSyncTracking import ExcelFile, ExcelSyncOperation, ExcelSyncError
 from .Operational import SyncStatus, AuditLog
 
 __all__ = [
@@ -36,6 +41,17 @@ __all__ = [
     "SharedMailbox",
     # Mail data models
     "MailFolder",
+    # Voice attachment models
+    "VoiceAttachment",
+    "VoiceAttachmentDownload",
+    # Transcription models
+    "VoiceTranscription",
+    "TranscriptionSegment",
+    "TranscriptionError",
+    # Excel sync models
+    "ExcelFile",
+    "ExcelSyncOperation",
+    "ExcelSyncError",
     # Operational models
     "SyncStatus",
     "AuditLog",

@@ -31,18 +31,31 @@ class AzureAuthService:
 
     def __init__(self):
         """Initialize the Azure AD client."""
+        logger.info("[SERVICE] Azure Auth Service initializing...")
+        
         if not settings.get("azure_client_id"):
+            logger.error("[ERROR] Azure Client ID is required but not configured")
             raise ValueError("Azure Client ID is required")
         if not settings.get("azure_client_secret"):
+            logger.error("[ERROR] Azure Client Secret is required but not configured")
             raise ValueError("Azure Client Secret is required")
 
-        self._client_app = msal.ConfidentialClientApplication(
-            client_id=settings.azure_client_id,
-            client_credential=settings.azure_client_secret,
-            authority=settings.azure_authority
-        )
-        self._scopes = settings.azure_scopes
-        self._auth_flow_cache = {}
+        try:
+            self._client_app = msal.ConfidentialClientApplication(
+                client_id=settings.azure_client_id,
+                client_credential=settings.azure_client_secret,
+                authority=settings.azure_authority
+            )
+            self._scopes = settings.azure_scopes
+            self._auth_flow_cache = {}
+            
+            logger.info(f"[CONFIG] Azure authority: {settings.azure_authority}")
+            logger.info(f"[CONFIG] Azure scopes: {settings.azure_scopes}")
+            logger.info(f"[CONFIG] Azure client ID: {settings.azure_client_id[:8]}...")
+            logger.info("[OK] Azure Auth Service initialized successfully")
+        except Exception as e:
+            logger.error(f"[ERROR] Failed to initialize Azure Auth Service: {str(e)}")
+            raise
 
     def get_authorization_url(self, state: Optional[str] = None) -> Dict[str, str]:
         """Generate authorization URL for OAuth flow.
