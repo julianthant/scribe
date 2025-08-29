@@ -9,7 +9,7 @@ import asyncio
 import logging
 import sys
 import time
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional, Union
 
 # Configure logging for testing
 logging.basicConfig(
@@ -24,7 +24,7 @@ async def test_database_connection() -> Dict[str, Any]:
     from app.core.config import settings
     from app.db.Database import db_manager
     
-    results = {
+    results: Dict[str, Any] = {
         "config_valid": False,
         "connection_successful": False,
         "health_check_passed": False,

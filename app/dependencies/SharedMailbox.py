@@ -21,7 +21,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from app.repositories.SharedMailboxRepository import SharedMailboxRepository
 from app.services.SharedMailboxService import SharedMailboxService
-from app.dependencies.Auth import get_current_user
+from app.dependencies.Auth import get_current_user, get_current_user_info_only
 from app.models.AuthModel import UserInfo
 from app.core.Exceptions import AuthenticationError
 
@@ -29,42 +29,25 @@ logger = logging.getLogger(__name__)
 
 
 async def get_shared_mailbox_repository(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))
+    auth_data: tuple[UserInfo, str] = Depends(get_current_user)
 ) -> SharedMailboxRepository:
-    """Get shared mailbox repository instance with current user's access token.
+    """Get shared mailbox repository instance with current user authentication.
     
     Args:
-        credentials: HTTP Bearer token credentials
+        auth_data: Tuple of (UserInfo, access_token) from authentication
         
     Returns:
-        SharedMailboxRepository: Repository instance configured with user's token
+        SharedMailboxRepository: Repository instance configured with access token
         
     Raises:
         HTTPException: If repository creation fails
     """
     try:
-        # Extract access token from credentials
-        logger.info(f"Shared mailbox dependency - credentials: {credentials is not None}")
+        current_user, access_token = auth_data
+        logger.info(f"Shared mailbox dependency - user: {current_user.email}, token length: {len(access_token)}")
         
-        if not credentials:
-            logger.error("No credentials available for shared mailbox operations")
-            raise HTTPException(
-                status_code=401,
-                detail="Authentication required for shared mailbox operations"
-            )
-        
-        access_token = credentials.credentials
-        logger.info(f"Shared mailbox dependency - access_token length: {len(access_token) if access_token else 0}")
-        
-        if not access_token:
-            logger.error("No access token available for shared mailbox operations")
-            raise HTTPException(
-                status_code=401,
-                detail="Access token required for shared mailbox operations"
-            )
-        
-        repository = SharedMailboxRepository(access_token)
-        return repository
+        # Create repository with the Graph API access token
+        return SharedMailboxRepository(access_token=access_token)
         
     except HTTPException:
         raise
@@ -105,7 +88,7 @@ async def get_shared_mailbox_service(
 async def validate_shared_mailbox_access(
     email_address: str,
     operation: str = "read",
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     shared_mailbox_service: SharedMailboxService = Depends(get_shared_mailbox_service)
 ) -> bool:
     """Validate user access to a specific shared mailbox for an operation.
@@ -139,7 +122,7 @@ async def validate_shared_mailbox_access(
 async def get_shared_mailbox_with_access_check(
     email_address: str,
     operation: str = "read",
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     shared_mailbox_service: SharedMailboxService = Depends(get_shared_mailbox_service)
 ) -> str:
     """Get shared mailbox email address after validating access.
@@ -177,7 +160,7 @@ async def get_shared_mailbox_with_access_check(
 # Convenience dependencies for specific operations
 async def get_shared_mailbox_read_access(
     email_address: str,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     shared_mailbox_service: SharedMailboxService = Depends(get_shared_mailbox_service)
 ) -> str:
     """Validate read access to shared mailbox.
@@ -200,7 +183,7 @@ async def get_shared_mailbox_read_access(
 
 async def get_shared_mailbox_write_access(
     email_address: str,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     shared_mailbox_service: SharedMailboxService = Depends(get_shared_mailbox_service)
 ) -> str:
     """Validate write access to shared mailbox.
@@ -223,7 +206,7 @@ async def get_shared_mailbox_write_access(
 
 async def get_shared_mailbox_send_access(
     email_address: str,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     shared_mailbox_service: SharedMailboxService = Depends(get_shared_mailbox_service)
 ) -> str:
     """Validate send access to shared mailbox.
@@ -246,7 +229,7 @@ async def get_shared_mailbox_send_access(
 
 async def get_shared_mailbox_manage_access(
     email_address: str,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     shared_mailbox_service: SharedMailboxService = Depends(get_shared_mailbox_service)
 ) -> str:
     """Validate manage access to shared mailbox.
@@ -269,7 +252,7 @@ async def get_shared_mailbox_manage_access(
 
 # Additional utility dependencies
 async def get_accessible_shared_mailbox_addresses(
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     shared_mailbox_service: SharedMailboxService = Depends(get_shared_mailbox_service)
 ) -> List[str]:
     """Get list of shared mailbox email addresses the user can access.

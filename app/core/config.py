@@ -55,14 +55,14 @@ def get_azure_authority_url() -> str:
         Azure AD authority URL
     """
     if settings.get("azure_authority"):
-        return settings.azure_authority
+        return str(settings.azure_authority)
     if settings.get("azure_tenant_id"):
         return f"https://login.microsoftonline.com/{settings.azure_tenant_id}"
     return "https://login.microsoftonline.com/common"
 
 
 
-def validate_required_settings():
+def validate_required_settings() -> None:
     """
     Validate that all required settings are present.
     

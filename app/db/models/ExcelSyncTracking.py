@@ -17,7 +17,7 @@ No JSON arrays - proper normalized relationships.
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, Index, Integer, Float, ForeignKey, UniqueConstraint, CheckConstraint, Text
 from sqlalchemy.dialects.mssql import NVARCHAR
@@ -26,7 +26,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.DatabaseModel import Base, TimestampMixin, UUIDMixin
 
 # Forward reference imports for relationships
-if False:  # TYPE_CHECKING
+if TYPE_CHECKING:
     from .User import User
     from .Transcription import VoiceTranscription
 
@@ -59,7 +59,7 @@ class ExcelFile(Base, UUIDMixin, TimestampMixin):
     last_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     
     # Relationships
-    user: Mapped["User"] = relationship("User")
+    user: Mapped["User"] = relationship("User", back_populates="excel_files")
     sync_operations: Mapped[List["ExcelSyncOperation"]] = relationship("ExcelSyncOperation", back_populates="excel_file", cascade="all, delete-orphan")
     sync_errors: Mapped[List["ExcelSyncError"]] = relationship("ExcelSyncError", back_populates="excel_file", cascade="all, delete-orphan")
 
@@ -128,7 +128,7 @@ class ExcelSyncOperation(Base, UUIDMixin, TimestampMixin):
     
     # Relationships
     excel_file: Mapped["ExcelFile"] = relationship("ExcelFile", back_populates="sync_operations")
-    user: Mapped["User"] = relationship("User")
+    user: Mapped["User"] = relationship("User", back_populates="excel_sync_operations")
     transcription: Mapped[Optional["VoiceTranscription"]] = relationship("VoiceTranscription")
     errors: Mapped[List["ExcelSyncError"]] = relationship("ExcelSyncError", back_populates="sync_operation", cascade="all, delete-orphan")
 
@@ -208,7 +208,7 @@ class ExcelSyncError(Base, UUIDMixin, TimestampMixin):
     # Relationships
     excel_file: Mapped["ExcelFile"] = relationship("ExcelFile", back_populates="sync_errors")
     sync_operation: Mapped[Optional["ExcelSyncOperation"]] = relationship("ExcelSyncOperation", back_populates="errors")
-    user: Mapped["User"] = relationship("User")
+    user: Mapped["User"] = relationship("User", back_populates="excel_sync_errors")
     transcription: Mapped[Optional["VoiceTranscription"]] = relationship("VoiceTranscription")
 
     # Constraints and indexes

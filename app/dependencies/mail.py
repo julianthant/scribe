@@ -27,6 +27,8 @@ from app.repositories.SharedMailboxRepository import SharedMailboxRepository
 from app.repositories.VoiceAttachmentRepository import VoiceAttachmentRepository
 from app.azure.AzureBlobService import AzureBlobService, azure_blob_service
 from app.db.Database import get_async_db
+from app.dependencies.Auth import get_current_user
+from app.models.AuthModel import UserInfo
 
 logger = logging.getLogger(__name__)
 
@@ -34,13 +36,13 @@ logger = logging.getLogger(__name__)
 security = HTTPBearer(auto_error=False)
 
 
-def get_mail_repository(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+async def get_mail_repository(
+    auth_data: tuple[UserInfo, str] = Depends(get_current_user)
 ) -> MailRepository:
-    """Get mail repository with access token.
+    """Get mail repository with access token from enhanced authentication.
     
     Args:
-        credentials: HTTP Bearer token credentials
+        auth_data: Tuple of (UserInfo, access_token) from authentication
         
     Returns:
         MailRepository: Configured mail repository
@@ -48,18 +50,35 @@ def get_mail_repository(
     Raises:
         HTTPException: If authentication fails
     """
-    if not credentials:
+    try:
+        current_user, access_token = auth_data
+        
+        # Validate the access token exists and is not empty
+        if not access_token or not access_token.strip():
+            logger.error(f"Empty or invalid access token for user: {current_user.email}")
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid access token",
+                headers={"WWW-Authenticate": "Bearer"}
+            )
+        
+        logger.debug(f"Creating mail repository for user: {current_user.email}, token length: {len(access_token)}")
+        repository = MailRepository(access_token)
+        
+        return repository
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logger.error(f"Error creating mail repository: {str(e)}")
         raise HTTPException(
-            status_code=401,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": "Bearer"}
+            status_code=500,
+            detail="Failed to initialize mail service"
         )
-    
-    access_token = credentials.credentials
-    return MailRepository(access_token)
 
 
-def get_mail_service(
+async def get_mail_service(
     mail_repository: MailRepository = Depends(get_mail_repository)
 ) -> MailService:
     """Get mail service with repository.
@@ -70,7 +89,16 @@ def get_mail_service(
     Returns:
         MailService: Configured mail service
     """
-    return MailService(mail_repository)
+    try:
+        logger.debug("Creating mail service instance")
+        service = MailService(mail_repository)
+        return service
+    except Exception as e:
+        logger.error(f"Error creating mail service: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to initialize mail service"
+        )
 
 
 def get_shared_mailbox_repository(

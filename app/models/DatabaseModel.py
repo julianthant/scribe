@@ -19,18 +19,27 @@ a clean dependency tree and avoid circular imports.
 
 from datetime import datetime
 from enum import Enum as PyEnum
-from typing import Optional
+from typing import Optional, overload, Union, Literal
 
-from sqlalchemy import Boolean, DateTime, Index, func, text
+from sqlalchemy import Boolean, DateTime, Index, MetaData, func, text
 from sqlalchemy.dialects.mssql import NVARCHAR, UNIQUEIDENTIFIER
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(AsyncAttrs, DeclarativeBase):
-    """Base class for all database models with async support."""
+    """Base class for all database models with async support and naming conventions."""
     
-    # Common naming convention for constraints
+    # Naming convention for constraints - Alembic best practices
+    metadata = MetaData(naming_convention={
+        "ix": "ix_%(table_name)s_%(column_0_N_name)s",
+        "uq": "uq_%(table_name)s_%(column_0_N_name)s", 
+        "ck": "ck_%(table_name)s_%(constraint_name)s",
+        "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+        "pk": "pk_%(table_name)s"
+    })
+    
+    # Common mapper configuration
     __mapper_args__ = {"eager_defaults": True}
 
 
@@ -119,7 +128,13 @@ def create_email_column(nullable: bool = False, unique: bool = False) -> Mapped[
     )
 
 
-def create_azure_id_column(nullable: bool = True, unique: bool = False) -> Mapped[Optional[str]]:
+@overload
+def create_azure_id_column(nullable: Literal[True] = True, unique: bool = False) -> Mapped[Optional[str]]: ...
+
+@overload  
+def create_azure_id_column(nullable: Literal[False], unique: bool = False) -> Mapped[str]: ...
+
+def create_azure_id_column(nullable: bool = True, unique: bool = False) -> Union[Mapped[str], Mapped[Optional[str]]]:
     """Create a column for Azure AD object IDs."""
     return mapped_column(
         NVARCHAR(36),  # Azure AD GUIDs are 36 characters

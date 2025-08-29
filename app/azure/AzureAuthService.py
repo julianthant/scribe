@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 class AzureAuthService:
     """Azure AD authentication service using MSAL."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the Azure AD client."""
         logger.info("[SERVICE] Azure Auth Service initializing...")
         
@@ -118,38 +118,43 @@ class AzureAuthService:
             if "code" not in query_params:
                 raise AuthenticationError("Authorization code not found in callback URL")
 
-            # Get the state and retrieve cached auth flow
+            # Get the state and authorization code
             flow_state = query_params.get("state", [""])[0]
+            auth_code = query_params.get("code", [""])[0]
+            
+            # Try to get cached auth flow first (for backward compatibility)
             auth_code_flow = self._auth_flow_cache.get(flow_state)
             
-            if not auth_code_flow:
-                logger.warning("Auth flow not found in cache, creating minimal flow")
-                # Fallback: create minimal auth flow
-                auth_code_flow = {
-                    "redirect_uri": settings.azure_redirect_uri,
-                    "scope": self._scopes
-                }
-
-            # Exchange code for token
-            logger.info(f"Attempting token exchange with flow: {auth_code_flow}")
-            
-            # Convert URL to dict format expected by MSAL
-            auth_response: dict[str, str] = {}
-            # Flatten the lists in query_params to single values
-            for key, value in query_params.items():
-                if isinstance(value, list) and len(value) == 1:
-                    auth_response[key] = value[0]
-                elif isinstance(value, list) and len(value) > 1:
-                    auth_response[key] = value[0]  # Take first value
-                else:
-                    auth_response[key] = str(value)
-            
-            logger.info(f"Auth response dict: {auth_response}")
-            
-            result = self._client_app.acquire_token_by_auth_code_flow(
-                auth_code_flow,
-                auth_response
-            )
+            if auth_code_flow:
+                logger.info(f"Using cached auth flow for token exchange (state: {flow_state})")
+                
+                # Convert URL to dict format expected by MSAL
+                auth_response: dict[str, str] = {}
+                for key, value in query_params.items():
+                    if isinstance(value, list) and len(value) >= 1:
+                        auth_response[key] = value[0]
+                    else:
+                        auth_response[key] = str(value)
+                
+                logger.debug(f"Auth response dict: {auth_response}")
+                
+                # Use the original flow-based method
+                result = self._client_app.acquire_token_by_auth_code_flow(
+                    auth_code_flow,
+                    auth_response
+                )
+                logger.info("Token exchange completed using cached auth flow")
+            else:
+                logger.warning(f"Auth flow not found in cache for state: {flow_state}, using direct token acquisition")
+                logger.info(f"Available cached states: {list(self._auth_flow_cache.keys())}")
+                
+                # Use direct token acquisition method that doesn't require cached flow
+                result = self._client_app.acquire_token_by_authorization_code(
+                    code=auth_code,
+                    scopes=self._scopes,
+                    redirect_uri=settings.azure_redirect_uri
+                )
+                logger.info("Token exchange completed using direct method")
             
             logger.info(f"Token exchange result: {result}")
             
@@ -173,8 +178,11 @@ class AzureAuthService:
             raise
         except Exception as e:
             logger.error(f"Unexpected error acquiring token: {str(e)}", exc_info=True)
-            logger.error(f"Auth code flow: {auth_code_flow}")
             logger.error(f"Callback URL: {auth_response_url}")
+            logger.error(f"Parsed query params: {query_params}")
+            logger.error(f"Flow state: {flow_state}")
+            logger.error(f"Auth code present: {'code' in query_params}")
+            logger.error(f"Cached flow found: {flow_state in self._auth_flow_cache if flow_state else False}")
             raise AuthenticationError("Failed to acquire access token")
 
     def refresh_token(self, refresh_token: str) -> Dict[str, Any]:
@@ -252,7 +260,7 @@ class AzureAuthService:
             logger.error(f"Unexpected error getting user profile: {str(e)}")
             raise AuthenticationError("Failed to retrieve user profile")
 
-    def validate_token(self, access_token: str) -> bool:
+    async def validate_token(self, access_token: str) -> bool:
         """Validate if an access token is still valid.
 
         Args:
@@ -263,18 +271,10 @@ class AzureAuthService:
         """
         try:
             # Simple validation by making a lightweight API call
-            import asyncio
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-            try:
-                loop.run_until_complete(self.get_user_profile(access_token))
-                return True
-            except (AuthenticationError, AuthorizationError):
-                return False
-            finally:
-                loop.close()
-
+            await self.get_user_profile(access_token)
+            return True
+        except (AuthenticationError, AuthorizationError):
+            return False
         except Exception as e:
             logger.error(f"Error validating token: {str(e)}")
             return False

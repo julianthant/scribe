@@ -399,12 +399,15 @@ class AzureAIFoundryService:
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
         # Handle any exceptions at the gather level
-        processed_results = []
+        processed_results: List[Tuple[str, Union[TranscriptionResult, Exception]]] = []
         for i, result in enumerate(results):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 filename = audio_files[i][1]
-                processed_results.append((filename, result))
+                # Convert BaseException to Exception for type safety
+                exception = Exception(str(result)) if not isinstance(result, Exception) else result
+                processed_results.append((filename, exception))
             else:
+                # result is already a tuple (filename, TranscriptionResult or Exception)
                 processed_results.append(result)
         
         return processed_results

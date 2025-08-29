@@ -17,7 +17,7 @@ from unittest.mock import Mock, AsyncMock, patch
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 
-from app.dependencies.mail import (
+from app.dependencies.Mail import (
     get_mail_repository,
     get_mail_service,
     get_shared_mailbox_repository,

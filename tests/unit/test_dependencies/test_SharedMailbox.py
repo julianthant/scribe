@@ -602,7 +602,7 @@ class TestIntegrationScenarios:
             id="admin-123",
             display_name="Admin User",
             email="admin@example.com",
-            role=UserRole.ADMIN,
+            role=UserRole.SUPERUSER,
             is_superuser=True
         )
         mock_service = AsyncMock()

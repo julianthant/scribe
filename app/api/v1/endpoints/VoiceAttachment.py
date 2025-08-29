@@ -31,8 +31,8 @@ from fastapi.responses import StreamingResponse
 
 from app.services.MailService import MailService
 from app.services.VoiceAttachmentService import VoiceAttachmentService
-from app.dependencies.Auth import get_current_user
-from app.dependencies.mail import get_mail_service, get_voice_attachment_service
+from app.dependencies.Auth import get_current_user_info_only
+from app.dependencies.Mail import get_mail_service, get_voice_attachment_service
 from app.models.AuthModel import UserInfo
 from app.models.MailModel import (
     MessageListResponse, OrganizeVoiceRequest, OrganizeVoiceResponse,
@@ -49,7 +49,7 @@ router = APIRouter(prefix="/voice-attachments", tags=["voice-attachments"])
 async def get_voice_attachments(
     folder_id: Optional[str] = Query(None, description="Folder ID to search within"),
     limit: int = Query(100, ge=1, le=500, description="Maximum messages to check"),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     voice_service: VoiceAttachmentService = Depends(get_voice_attachment_service)
 ):
     """Get all voice attachments across the mailbox.
@@ -85,7 +85,7 @@ async def get_voice_attachments(
 async def get_voice_messages(
     folder_id: Optional[str] = Query(None, description="Folder ID to search within"),
     top: int = Query(100, ge=1, le=500, description="Maximum messages to check"),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     mail_service: MailService = Depends(get_mail_service)
 ):
     """Get all messages containing voice attachments.
@@ -116,7 +116,7 @@ async def get_voice_messages(
 @router.post("/organize-voice", response_model=OrganizeVoiceResponse)
 async def organize_voice_messages(
     request: OrganizeVoiceRequest,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     voice_service: VoiceAttachmentService = Depends(get_voice_attachment_service)
 ):
     """Auto-organize voice messages into a dedicated folder.
@@ -145,7 +145,7 @@ async def organize_voice_messages(
 async def get_voice_attachment_metadata(
     message_id: str,
     attachment_id: str,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     voice_service: VoiceAttachmentService = Depends(get_voice_attachment_service)
 ):
     """Get detailed metadata for a voice attachment.
@@ -180,7 +180,7 @@ async def get_voice_attachment_metadata(
 async def download_voice_attachment(
     message_id: str,
     attachment_id: str,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     voice_service: VoiceAttachmentService = Depends(get_voice_attachment_service)
 ):
     """Download a voice attachment.
@@ -228,7 +228,7 @@ async def download_voice_attachment(
 @router.get("/messages/{message_id}", response_model=List[VoiceAttachment])
 async def get_message_voice_attachments(
     message_id: str,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     voice_service: VoiceAttachmentService = Depends(get_voice_attachment_service)
 ):
     """Get voice attachments from a specific message.
@@ -258,7 +258,7 @@ async def get_message_voice_attachments(
 @router.get("/statistics")
 async def get_voice_statistics(
     folder_id: Optional[str] = Query(None, description="Folder ID (if None, analyzes entire mailbox)"),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     voice_service: VoiceAttachmentService = Depends(get_voice_attachment_service)
 ):
     """Get comprehensive voice attachment statistics.
@@ -289,7 +289,7 @@ async def get_voice_statistics(
 async def store_voice_attachment(
     message_id: str,
     attachment_id: str,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     voice_service: VoiceAttachmentService = Depends(get_voice_attachment_service)
 ):
     """Download voice attachment from email and store in blob storage.
@@ -336,7 +336,7 @@ async def list_stored_voice_attachments(
     offset: int = Query(0, ge=0, description="Number of results to skip"),
     content_type: Optional[str] = Query(None, description="Filter by content type (e.g., 'audio/mpeg')"),
     order_by: str = Query("received_at", description="Field to order by"),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     voice_service: VoiceAttachmentService = Depends(get_voice_attachment_service)
 ):
     """List stored voice attachments for the current user.
@@ -384,7 +384,7 @@ async def list_stored_voice_attachments(
 async def download_voice_attachment_from_blob(
     blob_name: str,
     request: Request,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     voice_service: VoiceAttachmentService = Depends(get_voice_attachment_service)
 ):
     """Download voice attachment from blob storage.
@@ -435,7 +435,7 @@ async def download_voice_attachment_from_blob(
 @router.delete("/blob/{blob_name}")
 async def delete_stored_voice_attachment(
     blob_name: str,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     voice_service: VoiceAttachmentService = Depends(get_voice_attachment_service)
 ):
     """Delete stored voice attachment from blob storage.
@@ -479,7 +479,7 @@ async def delete_stored_voice_attachment(
 @router.get("/storage-statistics")
 async def get_voice_attachment_storage_statistics(
     days_ago: Optional[int] = Query(None, ge=1, le=365, description="Filter for recent data (days)"),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     voice_service: VoiceAttachmentService = Depends(get_voice_attachment_service)
 ):
     """Get voice attachment storage statistics for the current user.
@@ -513,7 +513,7 @@ async def get_voice_attachment_storage_statistics(
 async def cleanup_expired_voice_attachments(
     max_age_days: Optional[int] = Query(None, ge=1, le=365, description="Maximum age in days"),
     dry_run: bool = Query(True, description="If true, only return count without deleting"),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     voice_service: VoiceAttachmentService = Depends(get_voice_attachment_service)
 ):
     """Clean up expired voice attachments (admin function - requires superuser).

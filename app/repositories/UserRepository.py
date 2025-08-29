@@ -302,16 +302,20 @@ class UserRepository(BaseRepository[User, Dict[str, Any], Dict[str, Any]]):
         session_id: str,
         access_token: str,
         refresh_token: Optional[str] = None,
-        expires_at: Optional[datetime] = None
+        expires_at: Optional[datetime] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None
     ) -> Optional[Session]:
         """
-        Update session with new tokens.
+        Update session with new tokens and optional metadata.
         
         Args:
             session_id: Session ID to update
             access_token: New access token
             refresh_token: Optional new refresh token
             expires_at: Optional new expiration timestamp
+            ip_address: Optional new IP address
+            user_agent: Optional new user agent
             
         Returns:
             Updated Session instance or None if not found
@@ -320,12 +324,16 @@ class UserRepository(BaseRepository[User, Dict[str, Any], Dict[str, Any]]):
             DatabaseError: If session update fails
         """
         try:
-            update_data = {"access_token": access_token}
+            update_data: Dict[str, Any] = {"access_token": access_token}
             
             if refresh_token:
                 update_data["refresh_token"] = refresh_token
             if expires_at:
                 update_data["expires_at"] = expires_at
+            if ip_address:
+                update_data["ip_address"] = ip_address
+            if user_agent:
+                update_data["user_agent"] = user_agent
             
             result = await self.db_session.execute(
                 update(Session)
@@ -498,18 +506,18 @@ class UserRepository(BaseRepository[User, Dict[str, Any], Dict[str, Any]]):
     
     async def get_session_by_id(self, session_id: str) -> Optional[Session]:
         """
-        Get session by ID with user loaded.
+        Get session by ID with user and user profile loaded.
         
         Args:
             session_id: Session ID
             
         Returns:
-            Session instance with user loaded, or None if not found
+            Session instance with user and profile loaded, or None if not found
         """
         try:
             result = await self.db_session.execute(
                 select(Session)
-                .options(selectinload(Session.user))
+                .options(selectinload(Session.user).selectinload(User.profile))
                 .where(Session.id == session_id)
             )
             return result.scalar_one_or_none()
@@ -517,3 +525,68 @@ class UserRepository(BaseRepository[User, Dict[str, Any], Dict[str, Any]]):
         except Exception as e:
             logger.error(f"Failed to get session by ID {session_id}: {str(e)}")
             return None
+    
+    async def get_active_session_by_ip(self, user_id: str, ip_address: str) -> Optional[Session]:
+        """
+        Get active session for a user from a specific IP address.
+        
+        Args:
+            user_id: User ID
+            ip_address: Client IP address to match
+            
+        Returns:
+            Active Session instance from the IP, or None if not found
+        """
+        try:
+            result = await self.db_session.execute(
+                select(Session)
+                .options(selectinload(Session.user).selectinload(User.profile))
+                .where(and_(
+                    Session.user_id == user_id,
+                    Session.ip_address == ip_address,
+                    Session.is_revoked == False,
+                    Session.expires_at > datetime.utcnow()
+                ))
+                .order_by(Session.created_at.desc())
+                .limit(1)
+            )
+            return result.scalar_one_or_none()
+            
+        except Exception as e:
+            logger.error(f"Failed to get active session by IP for user {user_id}, IP {ip_address}: {str(e)}")
+            return None
+    
+    async def revoke_sessions_except_ip(self, user_id: str, keep_ip_address: str) -> int:
+        """
+        Revoke all active sessions for a user except those from a specific IP address.
+        
+        Args:
+            user_id: User ID
+            keep_ip_address: IP address to keep sessions for
+            
+        Returns:
+            Number of sessions revoked
+        """
+        try:
+            result = await self.db_session.execute(
+                update(Session)
+                .where(and_(
+                    Session.user_id == user_id,
+                    Session.is_revoked == False,
+                    Session.ip_address != keep_ip_address
+                ))
+                .values(is_revoked=True)
+            )
+            
+            await self.db_session.commit()
+            revoked_count = result.rowcount
+            
+            if revoked_count > 0:
+                logger.info(f"Revoked {revoked_count} sessions for user {user_id} from other IPs (kept IP: {keep_ip_address})")
+            
+            return revoked_count
+                
+        except Exception as e:
+            await self.db_session.rollback()
+            logger.error(f"Failed to revoke sessions except IP for user {user_id}: {str(e)}", exc_info=True)
+            return 0

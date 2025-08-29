@@ -6,7 +6,7 @@ Following 3NF normalization:
 - shared_mailboxes: Company shared mailboxes (separate entity)
 """
 
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 
 from sqlalchemy import Boolean, Index, ForeignKey
 from sqlalchemy.dialects.mssql import NVARCHAR
@@ -15,7 +15,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.DatabaseModel import Base, TimestampMixin, UUIDMixin, create_email_column, create_azure_id_column
 
 # Forward reference imports for relationships
-if False:  # TYPE_CHECKING
+if TYPE_CHECKING:
     from .User import User
     from .MailData import MailFolder
 

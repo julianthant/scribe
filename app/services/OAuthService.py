@@ -25,7 +25,8 @@ from app.azure.AzureAuthService import azure_auth_service
 from app.core.Exceptions import AuthenticationError, ValidationError
 from app.models.AuthModel import TokenResponse, UserInfo
 from app.repositories.UserRepository import UserRepository
-from app.db.models.User import UserRole
+from app.db.models.User import UserRole, Session
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -96,19 +97,19 @@ class OAuthService:
         try:
             # Validate state parameter
             if state and state in self._active_sessions:
-                session = self._active_sessions[state]
-                if session["status"] != "pending":
+                session_state = self._active_sessions[state]
+                if session_state["status"] != "pending":
                     raise ValidationError("Invalid session state")
                 
                 # Check if session is expired (10 minutes)
-                if datetime.utcnow() - session["created_at"] > timedelta(minutes=10):
+                if datetime.utcnow() - session_state["created_at"] > timedelta(minutes=10):
                     del self._active_sessions[state]
                     raise ValidationError("Session expired")
                 
                 # Mark as processing
-                session["status"] = "processing"
+                session_state["status"] = "processing"
             else:
-                logger.warning("State validation failed or missing")
+                logger.debug("State validation failed or missing - continuing with flexible validation")
                 # Continue without strict state validation for flexibility
 
             # Exchange authorization code for tokens
@@ -124,7 +125,9 @@ class OAuthService:
                 display_name=user_profile.get("displayName", ""),
                 email=user_profile.get("mail") or user_profile.get("userPrincipalName", ""),
                 given_name=user_profile.get("givenName", ""),
-                surname=user_profile.get("surname", "")
+                surname=user_profile.get("surname", ""),
+                role=UserRole.USER,  # Default role
+                is_superuser=False   # Default is not superuser
             )
             
             # Persist user data to database if repository is available
@@ -150,19 +153,62 @@ class OAuthService:
                     }
                     await self.user_repository.update_or_create_profile(user, profile_data)
                     
-                    # Create session record
+                    # Handle session management based on configuration
+                    session: Optional[Session] = None
+                    session_reuse_enabled = getattr(settings, 'session_reuse_same_ip', True)
+                    
+                    # Check for existing session from the same IP address if reuse is enabled
+                    if session_reuse_enabled and ip_address:
+                        session = await self.user_repository.get_active_session_by_ip(
+                            user_id=user.id,
+                            ip_address=ip_address
+                        )
+                    
                     expires_in = token_data.get("expires_in", 3600)
                     expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
                     
-                    session = await self.user_repository.create_session(
-                        user=user,
-                        access_token=access_token,
-                        refresh_token=token_data.get("refresh_token"),
-                        expires_at=expires_at,
-                        ip_address=ip_address,
-                        user_agent=user_agent
-                    )
-                    session_id = session.id
+                    if session:
+                        # Update existing session with new tokens
+                        updated_session = await self.user_repository.update_session(
+                            session_id=str(session.id),
+                            access_token=access_token,
+                            refresh_token=token_data.get("refresh_token"),
+                            expires_at=expires_at,
+                            ip_address=ip_address,
+                            user_agent=user_agent
+                        )
+                        if updated_session:
+                            session = updated_session
+                            session_id = str(updated_session.id)
+                            logger.info(f"Reused existing session for user {user.email} from IP {ip_address}: {session_id}")
+                        else:
+                            # If update failed, fall through to create new session
+                            session = None
+                    else:
+                        # Create new session record
+                        session = await self.user_repository.create_session(
+                            user=user,
+                            access_token=access_token,
+                            refresh_token=token_data.get("refresh_token"),
+                            expires_at=expires_at,
+                            ip_address=ip_address,
+                            user_agent=user_agent
+                        )
+                        if session:
+                            session_id = str(session.id)
+                            logger.info(f"Created new session for user {user.email} from IP {ip_address}: {session_id}")
+                        else:
+                            logger.error(f"Failed to create session for user {user.email}")
+                    
+                    # Optionally revoke sessions from other IPs for enhanced security
+                    session_revoke_others = getattr(settings, 'session_revoke_other_ips', False)
+                    if session_revoke_others and ip_address:
+                        revoked_count = await self.user_repository.revoke_sessions_except_ip(
+                            user_id=user.id,
+                            keep_ip_address=ip_address
+                        )
+                        if revoked_count > 0:
+                            logger.info(f"Revoked {revoked_count} sessions from other IPs for user {user.email}")
                     
                     # Update user_info with role information from database
                     user_info.role = user.role
@@ -181,13 +227,14 @@ class OAuthService:
                 token_type=token_data.get("token_type", "Bearer"),
                 expires_in=token_data.get("expires_in", 3600),
                 scope=" ".join(token_data.get("scope", [])),
-                user_info=user_info
+                user_info=user_info,
+                session_id=str(session.id) if session else None
             )
             
             # Store session ID in token response for future reference
             if session_id:
                 # Add session_id as a custom field (we'll need to extend TokenResponse model)
-                token_response.session_id = session_id
+                token_response.session_id = str(session_id) if session_id else None
             
             # Clean up OAuth state session
             if state and state in self._active_sessions:
@@ -233,7 +280,9 @@ class OAuthService:
                 display_name=user_profile.get("displayName", ""),
                 email=user_profile.get("mail") or user_profile.get("userPrincipalName", ""),
                 given_name=user_profile.get("givenName", ""),
-                surname=user_profile.get("surname", "")
+                surname=user_profile.get("surname", ""),
+                role=UserRole.USER,  # Default role
+                is_superuser=False   # Default is not superuser
             )
             
             # Get role information from database if repository is available
@@ -272,12 +321,13 @@ class OAuthService:
                 token_type=token_data.get("token_type", "Bearer"),
                 expires_in=token_data.get("expires_in", 3600),
                 scope=" ".join(token_data.get("scope", [])),
-                user_info=user_info
+                user_info=user_info,
+                session_id=None  # Will be set if session exists
             )
             
             # Preserve session ID in response
             if session_id:
-                token_response.session_id = session_id
+                token_response.session_id = str(session_id) if session_id else None
             
             logger.info(f"Successfully refreshed token for user: {user_info.email}")
             return token_response
@@ -308,7 +358,9 @@ class OAuthService:
                 display_name=user_profile.get("displayName", ""),
                 email=user_profile.get("mail") or user_profile.get("userPrincipalName", ""),
                 given_name=user_profile.get("givenName", ""),
-                surname=user_profile.get("surname", "")
+                surname=user_profile.get("surname", ""),
+                role=UserRole.USER,  # Default role
+                is_superuser=False   # Default is not superuser
             )
             
             # Get role information from database if repository is available
@@ -328,7 +380,7 @@ class OAuthService:
             logger.error(f"Failed to get current user: {str(e)}")
             raise AuthenticationError("Failed to retrieve current user information")
 
-    def validate_access_token(self, access_token: str) -> bool:
+    async def validate_access_token(self, access_token: str) -> bool:
         """Validate if an access token is still valid.
 
         Args:
@@ -338,7 +390,7 @@ class OAuthService:
             True if token is valid, False otherwise
         """
         try:
-            return azure_auth_service.validate_token(access_token)
+            return await azure_auth_service.validate_token(access_token)
         except Exception as e:
             logger.error(f"Error validating token: {str(e)}")
             return False
@@ -380,6 +432,59 @@ class OAuthService:
         except Exception as e:
             logger.error(f"Error during logout: {str(e)}")
             return False
+
+    async def get_user_by_session(self, session_id: str) -> Optional[UserInfo]:
+        """Get user information from a valid session ID.
+        
+        Args:
+            session_id: Database session ID to validate
+            
+        Returns:
+            UserInfo if session is valid, None otherwise
+        """
+        if not self.user_repository:
+            logger.error("UserRepository not available for session validation")
+            return None
+            
+        try:
+            # Get session from database
+            session = await self.user_repository.get_session_by_id(session_id)
+            
+            if not session:
+                logger.debug(f"Session not found: {session_id}")
+                return None
+                
+            # Check if session is revoked
+            if session.is_revoked:
+                logger.debug(f"Session is revoked: {session_id}")
+                return None
+                
+            # Check if session is expired
+            if session.expires_at and session.expires_at <= datetime.utcnow():
+                logger.debug(f"Session is expired: {session_id}")
+                return None
+            
+            # Get user info from the session's user
+            if not session.user:
+                logger.error(f"Session has no associated user: {session_id}")
+                return None
+                
+            user = session.user
+            user_info = UserInfo(
+                id=user.azure_id,
+                display_name=user.profile.display_name if user.profile and user.profile.display_name else "",
+                email=user.email,
+                given_name=user.profile.first_name if user.profile and user.profile.first_name else "",
+                surname=user.profile.last_name if user.profile and user.profile.last_name else "",
+                role=user.role,
+                is_superuser=(user.role == UserRole.SUPERUSER)
+            )
+            
+            return user_info
+            
+        except Exception as e:
+            logger.error(f"Error validating session {session_id}: {str(e)}")
+            return None
 
     async def cleanup_expired_sessions(self) -> None:
         """Clean up expired sessions in both memory and database."""

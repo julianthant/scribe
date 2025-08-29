@@ -95,6 +95,16 @@ organization_isolation_strict = true
 superuser_emails = []
 
 # -----------------------------------------------------------------------------
+# Session Management
+# -----------------------------------------------------------------------------
+# Enable session reuse for same IP address
+session_reuse_same_ip = true
+# Revoke sessions from other IPs when logging in (for enhanced security)
+session_revoke_other_ips = false
+# Maximum active sessions per user (0 = unlimited)
+session_max_per_user = 0
+
+# -----------------------------------------------------------------------------
 # Cross-Origin Resource Sharing (CORS)
 # -----------------------------------------------------------------------------
 backend_cors_origins = ["*"]           # Restrictive in production

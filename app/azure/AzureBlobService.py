@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import hashlib
 
-from azure.storage.blob import BlobServiceClient, BlobClient, generate_blob_sas, BlobSasPermissions
+from azure.storage.blob import BlobServiceClient, BlobClient, generate_blob_sas, BlobSasPermissions  # type: ignore
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError, AzureError
 from azure.identity import DefaultAzureCredential
 

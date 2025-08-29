@@ -33,7 +33,7 @@ from app.db.Database import DatabaseManager
 from app.models.DatabaseModel import Base
 from app.db.models.User import User
 from app.db.models.MailAccount import MailAccount
-from app.db.models.MailData import MailData
+from app.db.models.MailData import MailFolder
 from app.db.models.VoiceAttachment import VoiceAttachment
 
 
@@ -55,6 +55,13 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "slow: mark test as slow running"
     )
+
+def pytest_asyncio_config():
+    """Configure pytest-asyncio settings."""
+    return {
+        "asyncio_mode": "auto",
+        "asyncio_default_fixture_loop_scope": "function"
+    }
 
 
 def pytest_collection_modifyitems(config, items):

@@ -358,7 +358,7 @@ def get_shared_mailbox_cache() -> SharedMailboxCache:
     return shared_mailbox_cache
 
 
-def cleanup_expired_entries():
+def cleanup_expired_entries() -> int:
     """Cleanup expired entries from all caches."""
     expired_count = _memory_cache.cleanup_expired()
     if expired_count > 0:
@@ -379,7 +379,7 @@ def get_cache_metrics() -> Dict[str, Any]:
     }
 
 
-def warmup_cache():
+def warmup_cache() -> None:
     """Initialize cache for Azure Functions cold starts.
     
     This function can be called during function app startup to prepare

@@ -419,7 +419,7 @@ class TestIntegrationScenarios:
             email="admin@example.com",
             given_name="Admin",
             surname="User",
-            role=UserRole.ADMIN,
+            role=UserRole.SUPERUSER,
             is_superuser=True
         )
 
@@ -431,5 +431,5 @@ class TestIntegrationScenarios:
 
             # Assert
             assert result.is_superuser is True
-            assert result.role == UserRole.ADMIN
+            assert result.role == UserRole.SUPERUSER
             assert result.email == "admin@example.com"

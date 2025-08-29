@@ -7,7 +7,7 @@ Following 3NF normalization:
 """
 
 from datetime import datetime
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from sqlalchemy import DateTime, Enum, Index, ForeignKey, Text
 from sqlalchemy.dialects.mssql import NVARCHAR
@@ -16,7 +16,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.DatabaseModel import Base, TimestampMixin, UUIDMixin, EntityType, SyncStatus as SyncStatusEnum
 
 # Forward reference imports for relationships
-if False:  # TYPE_CHECKING
+if TYPE_CHECKING:
     from .User import User
 
 

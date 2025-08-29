@@ -22,7 +22,7 @@ from sqlalchemy import select, func
 
 from app.db.models.User import User
 from app.db.models.MailAccount import MailAccount
-from app.db.models.MailData import MailData
+from app.db.models.MailData import MailFolder
 from app.db.models.VoiceAttachment import VoiceAttachment
 from app.models.BaseModel import ErrorResponse
 
@@ -404,7 +404,7 @@ class DatabaseAssertions:
     async def assert_mail_data_exists(self, message_id: str, **expected_properties):
         """Assert that mail data exists with expected properties."""
         result = await self.session.execute(
-            select(MailData).where(MailData.message_id == message_id)
+            select(MailFolder).where(MailFolder.message_id == message_id)
         )
         mail_data = result.scalar_one_or_none()
         
@@ -449,7 +449,7 @@ class DatabaseAssertions:
     async def get_user_mail_data_count(self, user_id: str) -> int:
         """Get count of mail data entries for a user."""
         result = await self.session.execute(
-            select(func.count(MailData.id)).where(MailData.user_id == user_id)
+            select(func.count(MailFolder.id)).where(MailFolder.user_id == user_id)
         )
         return result.scalar()
 

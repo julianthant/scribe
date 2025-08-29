@@ -139,7 +139,7 @@ class ExcelSyncRepository:
             True if updated successfully, False if not found
         """
         try:
-            update_data = {"last_accessed_at": datetime.utcnow()}
+            update_data: Dict[str, Any] = {"last_accessed_at": datetime.utcnow()}
             
             if onedrive_file_id is not None:
                 update_data["onedrive_file_id"] = onedrive_file_id
@@ -289,7 +289,7 @@ class ExcelSyncRepository:
             True if updated successfully
         """
         try:
-            update_data = {"operation_status": status}
+            update_data: Dict[str, Any] = {"operation_status": status}
             
             if rows_processed is not None:
                 update_data["rows_processed"] = rows_processed
@@ -374,7 +374,7 @@ class ExcelSyncRepository:
                 stmt = stmt.where(ExcelSyncOperation.user_id == user_id)
             
             result = await self.db_session.execute(stmt)
-            return result.scalars().all()
+            return list(result.scalars().all())
             
         except Exception as e:
             logger.error(f"Error getting pending sync operations: {str(e)}")
@@ -536,8 +536,8 @@ class ExcelSyncRepository:
             success_rate = (successful_syncs / total_sync_operations * 100) if total_sync_operations > 0 else 0
             
             # Calculate average processing time
-            completed_ops = [op for op in sync_operations if op.operation_status == "completed" and op.processing_time_ms]
-            avg_processing_time = sum(op.processing_time_ms for op in completed_ops) / len(completed_ops) if completed_ops else 0
+            completed_ops = [op for op in sync_operations if op.operation_status == "completed" and op.processing_time_ms is not None]
+            avg_processing_time = sum(op.processing_time_ms for op in completed_ops if op.processing_time_ms is not None) / len(completed_ops) if completed_ops else 0
             
             # Get most recent sync
             last_sync = max([f.last_sync_at for f in excel_files if f.last_sync_at], default=None)
@@ -583,7 +583,7 @@ class ExcelSyncRepository:
                 stmt = stmt.where(ExcelFile.file_status == "active")
             
             result = await self.db_session.execute(stmt)
-            return result.scalars().all()
+            return list(result.scalars().all())
             
         except Exception as e:
             logger.error(f"Error getting user Excel files: {str(e)}")

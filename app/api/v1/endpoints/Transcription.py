@@ -27,7 +27,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query, Body
 from pydantic import BaseModel, Field
 
 from app.services.TranscriptionService import TranscriptionService
-from app.dependencies.Auth import get_current_user
+from app.dependencies.Auth import get_current_user_info_only
 from app.dependencies.Transcription import get_transcription_service
 from app.models.AuthModel import UserInfo
 from app.core.Exceptions import ValidationError, AuthenticationError, DatabaseError
@@ -126,7 +126,7 @@ class ResolveErrorRequest(BaseModel):
 async def transcribe_voice_attachment(
     voice_attachment_id: str,
     request: TranscribeVoiceRequest = Body(...),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     transcription_service: TranscriptionService = Depends(get_transcription_service)
 ):
     """
@@ -168,7 +168,7 @@ async def transcribe_voice_attachment(
 @router.get("/voice/{voice_attachment_id}", response_model=TranscriptionResponse)
 async def get_transcription_by_voice_attachment(
     voice_attachment_id: str,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     transcription_service: TranscriptionService = Depends(get_transcription_service)
 ):
     """
@@ -210,7 +210,7 @@ async def get_transcription_by_voice_attachment(
 @router.get("/{transcription_id}", response_model=TranscriptionResponse)
 async def get_transcription(
     transcription_id: str,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     transcription_service: TranscriptionService = Depends(get_transcription_service)
 ):
     """
@@ -252,7 +252,7 @@ async def get_transcription(
 @router.post("/batch", response_model=BatchTranscribeResponse)
 async def batch_transcribe_voice_attachments(
     request: BatchTranscribeRequest,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     transcription_service: TranscriptionService = Depends(get_transcription_service)
 ):
     """
@@ -284,7 +284,7 @@ async def batch_transcribe_voice_attachments(
         )
         
         # Process results for response
-        processed_results = {}
+        processed_results: Dict[str, Any] = {}
         successful_count = 0
         failed_count = 0
         
@@ -298,7 +298,7 @@ async def batch_transcribe_voice_attachments(
             else:
                 processed_results[attachment_id] = {
                     "status": "completed",
-                    "transcription": _convert_transcription_to_response(result).dict()
+                    "transcription": _convert_transcription_to_response(result).model_dump()
                 }
                 successful_count += 1
         
@@ -328,8 +328,8 @@ async def list_transcriptions(
     limit: int = Query(50, ge=1, le=200, description="Number of results to return"),
     offset: int = Query(0, ge=0, description="Number of results to skip"),
     order_by: str = Query("created_at", description="Field to order by"),
-    order_direction: str = Query("desc", regex="^(asc|desc)$", description="Order direction"),
-    current_user: UserInfo = Depends(get_current_user),
+    order_direction: str = Query("desc", pattern="^(asc|desc)$", description="Order direction"),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     transcription_service: TranscriptionService = Depends(get_transcription_service)
 ):
     """
@@ -373,7 +373,7 @@ async def list_transcriptions(
 @router.delete("/{transcription_id}")
 async def delete_transcription(
     transcription_id: str,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     transcription_service: TranscriptionService = Depends(get_transcription_service)
 ):
     """
@@ -415,7 +415,7 @@ async def delete_transcription(
 @router.get("/statistics/summary")
 async def get_transcription_statistics(
     days_ago: Optional[int] = Query(None, ge=1, le=365, description="Filter data from N days ago"),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     transcription_service: TranscriptionService = Depends(get_transcription_service)
 ):
     """
@@ -448,7 +448,7 @@ async def get_transcription_errors(
     resolved: Optional[bool] = Query(None, description="Filter by resolution status"),
     limit: int = Query(50, ge=1, le=200, description="Number of results to return"),
     offset: int = Query(0, ge=0, description="Number of results to skip"),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     transcription_service: TranscriptionService = Depends(get_transcription_service)
 ):
     """
@@ -500,7 +500,7 @@ async def get_transcription_errors(
 async def resolve_transcription_error(
     error_id: str,
     request: ResolveErrorRequest,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     transcription_service: TranscriptionService = Depends(get_transcription_service)
 ):
     """
@@ -543,7 +543,7 @@ async def retry_failed_transcription(
     voice_attachment_id: str,
     model_deployment: Optional[str] = Body(None),
     language: Optional[str] = Body(None),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     transcription_service: TranscriptionService = Depends(get_transcription_service)
 ):
     """
@@ -580,7 +580,7 @@ async def retry_failed_transcription(
 
 @router.get("/models/supported")
 async def get_supported_models(
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     transcription_service: TranscriptionService = Depends(get_transcription_service)
 ):
     """
@@ -603,7 +603,7 @@ async def get_supported_models(
 
 @router.get("/health/status")
 async def get_transcription_health(
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     transcription_service: TranscriptionService = Depends(get_transcription_service)
 ):
     """
