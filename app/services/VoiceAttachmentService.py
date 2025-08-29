@@ -21,7 +21,7 @@ import logging
 import os
 import io
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.services.MailService import MailService
 from app.repositories.MailRepository import MailRepository
@@ -29,6 +29,7 @@ from app.repositories.SharedMailboxRepository import SharedMailboxRepository
 from app.repositories.VoiceAttachmentRepository import VoiceAttachmentRepository
 from app.azure.AzureBlobService import AzureBlobService
 from app.core.Exceptions import ValidationError, AuthenticationError
+from app.core.config import settings
 from app.models.MailModel import (
     VoiceAttachment, Message, Attachment, FileAttachment,
     OrganizeVoiceResponse, FolderStatistics
@@ -619,7 +620,7 @@ class VoiceAttachmentService:
             )
             
             # Get container name from settings
-            container_name = getattr(self.blob_service.settings, 'blob_storage_container_name', 'voice-attachments')
+            container_name = getattr(settings, 'blob_storage_container_name', 'voice-attachments')
             
             # Prepare metadata
             metadata = {
@@ -654,9 +655,9 @@ class VoiceAttachmentService:
                 size_bytes=target_attachment.size,
                 sender_email=message.from_.emailAddress.address if message.from_ else "",
                 subject=message.subject if message else subject or "Unknown",
-                received_at=message.receivedDateTime if message else received_at or datetime.utcnow(),
+                received_at=message.receivedDateTime if message and message.receivedDateTime else received_at or datetime.utcnow(),
                 blob_url=blob_url,
-                sender_name=sender_name or (message.from_.name if message and message.from_ else ""),
+                sender_name=sender_name or (message.from_.emailAddress.name if message and message.from_ else ""),
             )
             
             logger.info(f"Stored voice attachment in blob: {blob_name} ({len(content)} bytes)")
@@ -910,7 +911,7 @@ class VoiceAttachmentService:
         self,
         max_age_days: Optional[int] = None,
         dry_run: bool = False
-    ) -> Dict[str, int]:
+    ) -> Dict[str, Any]:
         """Clean up expired voice attachments from both blob storage and database.
         
         Args:

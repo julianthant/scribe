@@ -123,7 +123,7 @@ class AzureOneDriveService:
             create_url = f"{self.graph_base_url}/me/drive/root:/{file_name_with_ext}:/workbook"
 
             # Create request body for new workbook
-            create_body = {}
+            create_body: Dict[str, Any] = {}
 
             async with httpx.AsyncClient() as client:
                 response = await client.put(

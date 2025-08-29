@@ -214,6 +214,14 @@ class DatabaseManager:
             await session.commit()
         except Exception as e:
             await session.rollback()
+            
+            # Don't log HTTPExceptions as database errors - they should be handled by FastAPI
+            from fastapi import HTTPException
+            if isinstance(e, HTTPException):
+                # Re-raise HTTPExceptions without logging as database error
+                raise e
+            
+            # Log actual database errors
             logger.error(f"Database session error: {e}")
             raise DatabaseError(
                 "Database operation failed",

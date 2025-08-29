@@ -9,7 +9,7 @@ No JSON arrays - proper normalized relationships.
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, Index, Integer, ForeignKey, UniqueConstraint, CheckConstraint
 from sqlalchemy.dialects.mssql import NVARCHAR
@@ -18,9 +18,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.DatabaseModel import Base, TimestampMixin, UUIDMixin, create_email_column, create_azure_id_column
 
 # Forward reference imports for relationships
-if False:  # TYPE_CHECKING
+if TYPE_CHECKING:
     from .User import User
-    from .MailData import MailMessage
     from .Transcription import VoiceTranscription
 
 
@@ -67,7 +66,7 @@ class VoiceAttachment(Base, UUIDMixin, TimestampMixin):
     transcription_confidence: Mapped[Optional[float]] = mapped_column(nullable=True)
     
     # Relationships
-    user: Mapped["User"] = relationship("User")
+    user: Mapped["User"] = relationship("User", back_populates="voice_attachments")
     downloads: Mapped[List["VoiceAttachmentDownload"]] = relationship("VoiceAttachmentDownload", back_populates="attachment", cascade="all, delete-orphan")
     transcription: Mapped[Optional["VoiceTranscription"]] = relationship("VoiceTranscription", back_populates="voice_attachment", cascade="all, delete-orphan", uselist=False)
 
@@ -127,7 +126,7 @@ class VoiceAttachmentDownload(Base, UUIDMixin, TimestampMixin):
     
     # Relationships
     attachment: Mapped["VoiceAttachment"] = relationship("VoiceAttachment", back_populates="downloads")
-    user: Mapped["User"] = relationship("User")
+    user: Mapped["User"] = relationship("User", back_populates="voice_attachment_downloads")
 
     # Constraints and indexes
     __table_args__ = (

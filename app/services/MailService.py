@@ -19,6 +19,7 @@ business logic while maintaining separation of concerns from the API layer.
 from typing import List, Optional, Dict, Any, Tuple
 import logging
 from datetime import datetime
+from enum import Enum
 
 from app.repositories.MailRepository import MailRepository
 from app.core.Exceptions import AuthenticationError, ValidationError
@@ -28,6 +29,13 @@ from app.models.MailModel import (
     CreateFolderRequest, MoveMessageRequest, UpdateMessageRequest,
     AttachmentFilter, SearchMessagesRequest, OrganizeVoiceResponse
 )
+
+class MessageFilter(Enum):
+    """Enumeration for message filtering options."""
+    ALL = "all"
+    INBOX = "inbox"
+    HAS_ATTACHMENTS = "has_attachments"
+    VOICE_ATTACHMENTS = "voice_attachments"
 
 logger = logging.getLogger(__name__)
 
@@ -131,48 +139,141 @@ class MailService:
             logger.error(f"Failed to get or create folder '{name}': {str(e)}")
             raise
 
-    async def get_inbox_messages(
-        self, 
-        top: int = 25, 
+    async def get_messages(
+        self,
+        filter_type: MessageFilter = MessageFilter.ALL,
+        folder_id: Optional[str] = None,
+        top: int = 25,
         skip: int = 0
-    ) -> MessageListResponse:
-        """Get messages from inbox.
+    ) -> Tuple[MessageListResponse, Optional[List[VoiceAttachment]]]:
+        """
+        Unified method to get messages with various filtering options.
 
         Args:
+            filter_type: Type of filtering to apply
+            folder_id: Optional folder ID to search in (ignored for INBOX filter)
             top: Number of messages to return
             skip: Number of messages to skip
 
         Returns:
-            Message list response
+            Tuple of (message list response, optional voice attachments list)
+            Voice attachments list is only returned for VOICE_ATTACHMENTS filter
 
         Raises:
             AuthenticationError: If retrieval fails
         """
         try:
-            # Get inbox folder first
-            folders = await self.list_mail_folders()
-            inbox_folder = None
+            target_folder_id = folder_id
             
-            for folder in folders:
-                if folder.displayName.lower() == "inbox":
-                    inbox_folder = folder
-                    break
-            
-            if not inbox_folder:
-                raise AuthenticationError("Inbox folder not found")
+            # Handle inbox-specific filtering
+            if filter_type == MessageFilter.INBOX:
+                folders = await self.list_mail_folders()
+                inbox_folder = next(
+                    (folder for folder in folders if folder.displayName.lower() == "inbox"),
+                    None
+                )
+                if not inbox_folder:
+                    raise AuthenticationError("Inbox folder not found")
+                target_folder_id = inbox_folder.id
 
+            # Set up attachment filtering
+            has_attachments = filter_type in [
+                MessageFilter.HAS_ATTACHMENTS,
+                MessageFilter.VOICE_ATTACHMENTS
+            ]
+
+            # Get base messages
             messages = await self.mail_repository.get_messages(
-                folder_id=inbox_folder.id,
+                folder_id=target_folder_id,
+                has_attachments=has_attachments if has_attachments else None,
                 top=top,
                 skip=skip
             )
+
+            # Handle voice attachment filtering
+            if filter_type == MessageFilter.VOICE_ATTACHMENTS:
+                return await self._filter_voice_messages(messages)
             
-            logger.info(f"Retrieved {len(messages.value)} inbox messages")
-            return messages
+            # For all other filters, return messages with no voice attachments
+            filter_name = filter_type.value.replace("_", " ")
+            logger.info(f"Retrieved {len(messages.value)} messages with filter: {filter_name}")
+            return messages, None
 
         except Exception as e:
-            logger.error(f"Failed to get inbox messages: {str(e)}")
+            logger.error(f"Failed to get messages with filter {filter_type.value}: {str(e)}")
             raise
+
+    async def _filter_voice_messages(
+        self, 
+        messages: MessageListResponse
+    ) -> Tuple[MessageListResponse, List[VoiceAttachment]]:
+        """
+        Filter messages to only include those with voice attachments.
+        
+        Args:
+            messages: Original message list response
+            
+        Returns:
+            Tuple of (filtered messages, voice attachments list)
+        """
+        voice_messages = []
+        voice_attachments = []
+
+        # Check each message for voice attachments
+        for message in messages.value:
+            if message.hasAttachments:
+                try:
+                    attachments = await self.mail_repository.get_attachments(message.id)
+                    message_voice_attachments = []
+                    
+                    for attachment in attachments:
+                        if self._is_voice_attachment(attachment):
+                            voice_attachment = VoiceAttachment(
+                                messageId=message.id,
+                                attachmentId=attachment.id,
+                                name=attachment.name,
+                                contentType=attachment.contentType or "",
+                                size=attachment.size,
+                                duration=None,
+                                sampleRate=None,
+                                bitRate=None
+                            )
+                            message_voice_attachments.append(voice_attachment)
+                            voice_attachments.append(voice_attachment)
+                    
+                    if message_voice_attachments:
+                        # Add attachments to message
+                        message.attachments = attachments
+                        voice_messages.append(message)
+                
+                except Exception as e:
+                    logger.warning(f"Failed to process attachments for message {message.id}: {str(e)}")
+                    # Continue with next message
+                    continue
+
+        # Create response with only voice messages
+        response_dict = {
+            "value": voice_messages,
+            "@odata.nextLink": messages.odata_nextLink,
+            "@odata.count": len(voice_messages)
+        }
+        voice_message_response = MessageListResponse.model_validate(response_dict)
+
+        logger.info(f"Found {len(voice_messages)} messages with {len(voice_attachments)} voice attachments")
+        return voice_message_response, voice_attachments
+
+    # Backward compatibility methods - deprecated, use get_messages() instead
+    async def get_inbox_messages(
+        self, 
+        top: int = 25, 
+        skip: int = 0
+    ) -> MessageListResponse:
+        """
+        DEPRECATED: Use get_messages(MessageFilter.INBOX) instead.
+        Get messages from inbox.
+        """
+        result, _ = await self.get_messages(MessageFilter.INBOX, top=top, skip=skip)
+        return result
 
     async def get_messages_with_attachments(
         self, 
@@ -180,33 +281,12 @@ class MailService:
         top: int = 25,
         skip: int = 0
     ) -> MessageListResponse:
-        """Get messages that have attachments.
-
-        Args:
-            folder_id: Optional folder ID to search in
-            top: Number of messages to return
-            skip: Number of messages to skip
-
-        Returns:
-            Message list response with messages containing attachments
-
-        Raises:
-            AuthenticationError: If retrieval fails
         """
-        try:
-            messages = await self.mail_repository.get_messages(
-                folder_id=folder_id,
-                has_attachments=True,
-                top=top,
-                skip=skip
-            )
-            
-            logger.info(f"Retrieved {len(messages.value)} messages with attachments")
-            return messages
-
-        except Exception as e:
-            logger.error(f"Failed to get messages with attachments: {str(e)}")
-            raise
+        DEPRECATED: Use get_messages(MessageFilter.HAS_ATTACHMENTS) instead.
+        Get messages that have attachments.
+        """
+        result, _ = await self.get_messages(MessageFilter.HAS_ATTACHMENTS, folder_id=folder_id, top=top, skip=skip)
+        return result
 
     async def get_messages_with_voice_attachments(
         self, 
@@ -214,78 +294,12 @@ class MailService:
         top: int = 100,
         skip: int = 0
     ) -> Tuple[MessageListResponse, List[VoiceAttachment]]:
-        """Get messages that have voice/audio attachments.
-
-        Args:
-            folder_id: Optional folder ID to search in
-            top: Number of messages to return
-            skip: Number of messages to skip
-
-        Returns:
-            Tuple of (message list response, list of voice attachments)
-
-        Raises:
-            AuthenticationError: If retrieval fails
         """
-        try:
-            # First get messages with attachments
-            messages = await self.mail_repository.get_messages(
-                folder_id=folder_id,
-                has_attachments=True,
-                top=top,
-                skip=skip
-            )
-
-            voice_messages = []
-            voice_attachments = []
-
-            # Check each message for voice attachments
-            for message in messages.value:
-                if message.hasAttachments:
-                    try:
-                        attachments = await self.mail_repository.get_attachments(message.id)
-                        message_voice_attachments = []
-                        
-                        for attachment in attachments:
-                            if self._is_voice_attachment(attachment):
-                                voice_attachment = VoiceAttachment(
-                                    messageId=message.id,
-                                    attachmentId=attachment.id,
-                                    name=attachment.name,
-                                    contentType=attachment.contentType or "",
-                                    size=attachment.size,
-                                    duration=None,
-                                    sampleRate=None,
-                                    bitRate=None
-                                )
-                                message_voice_attachments.append(voice_attachment)
-                                voice_attachments.append(voice_attachment)
-                        
-                        if message_voice_attachments:
-                            # Add attachments to message
-                            message.attachments = attachments
-                            voice_messages.append(message)
-                    
-                    except Exception as e:
-                        logger.warning(f"Failed to process attachments for message {message.id}: {str(e)}")
-                        # Continue with next message
-                        continue
-
-            # Create response with only voice messages
-            # Create response dict with proper field names for aliases
-            response_dict = {
-                "value": voice_messages,
-                "@odata.nextLink": messages.odata_nextLink,
-                "@odata.count": len(voice_messages)
-            }
-            voice_message_response = MessageListResponse.model_validate(response_dict)
-
-            logger.info(f"Found {len(voice_messages)} messages with {len(voice_attachments)} voice attachments")
-            return voice_message_response, voice_attachments
-
-        except Exception as e:
-            logger.error(f"Failed to get messages with voice attachments: {str(e)}")
-            raise
+        DEPRECATED: Use get_messages(MessageFilter.VOICE_ATTACHMENTS) instead.
+        Get messages that have voice/audio attachments.
+        """
+        result, voice_attachments = await self.get_messages(MessageFilter.VOICE_ATTACHMENTS, folder_id=folder_id, top=top, skip=skip)
+        return result, voice_attachments or []
 
     async def extract_voice_attachments(self, message_id: str) -> List[VoiceAttachment]:
         """Extract all voice/audio attachments from a message.

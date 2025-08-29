@@ -357,7 +357,7 @@ class TranscriptionRepository:
             # Get total count
             count_stmt = select(func.count(VoiceTranscription.id)).select_from(stmt.subquery())
             count_result = await self.db_session.execute(count_stmt)
-            total_count = count_result.scalar()
+            total_count = count_result.scalar() or 0
             
             # Apply ordering
             order_column = getattr(VoiceTranscription, order_by, VoiceTranscription.created_at)
@@ -546,10 +546,10 @@ class TranscriptionRepository:
                 "language_breakdown": language_counts,
                 "model_breakdown": model_counts,
                 "quality_metrics": {
-                    "avg_confidence_score": float(quality_row.avg_confidence) if quality_row.avg_confidence else None,
-                    "avg_processing_time_ms": float(quality_row.avg_processing_time) if quality_row.avg_processing_time else None,
-                    "avg_audio_duration_seconds": float(quality_row.avg_audio_duration) if quality_row.avg_audio_duration else None,
-                    "total_audio_duration_seconds": float(quality_row.total_audio_duration) if quality_row.total_audio_duration else None
+                    "avg_confidence_score": float(quality_row.avg_confidence) if quality_row and quality_row.avg_confidence else None,
+                    "avg_processing_time_ms": float(quality_row.avg_processing_time) if quality_row and quality_row.avg_processing_time else None,
+                    "avg_audio_duration_seconds": float(quality_row.avg_audio_duration) if quality_row and quality_row.avg_audio_duration else None,
+                    "total_audio_duration_seconds": float(quality_row.total_audio_duration) if quality_row and quality_row.total_audio_duration else None
                 },
                 "completed_transcriptions": status_counts.get("completed", 0),
                 "failed_transcriptions": status_counts.get("failed", 0),
@@ -598,7 +598,7 @@ class TranscriptionRepository:
             # Get total count
             count_stmt = select(func.count(VoiceTranscription.id)).select_from(stmt.subquery())
             count_result = await self.db_session.execute(count_stmt)
-            total_count = count_result.scalar()
+            total_count = count_result.scalar() or 0
             
             # Apply pagination
             stmt = stmt.offset(offset).limit(limit)
@@ -645,7 +645,7 @@ class TranscriptionRepository:
             # Get total count
             count_stmt = select(func.count(TranscriptionError.id)).select_from(stmt.subquery())
             count_result = await self.db_session.execute(count_stmt)
-            total_count = count_result.scalar()
+            total_count = count_result.scalar() or 0
             
             # Apply ordering and pagination
             stmt = (
@@ -754,7 +754,7 @@ class TranscriptionRepository:
                 stmt = stmt.limit(limit)
             
             result = await self.db_session.execute(stmt)
-            transcriptions = result.scalars().all()
+            transcriptions = list(result.scalars().all())
             
             logger.info(f"Retrieved {len(transcriptions)} transcriptions for date range {start_date} to {end_date}")
             return transcriptions

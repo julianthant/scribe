@@ -14,6 +14,7 @@ import tempfile
 import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, AsyncGenerator, Union
+from contextlib import contextmanager
 from pathlib import Path
 import httpx
 import pytest
@@ -271,11 +272,12 @@ class MockingHelper:
         return patch.object(settings, **overrides)
     
     @staticmethod
-    def mock_datetime_now(fixed_datetime: datetime) -> patch:
+    @contextmanager
+    def mock_datetime_now(fixed_datetime: datetime):
         """Mock datetime.utcnow() to return a fixed datetime."""
         from unittest.mock import patch
         
-        return patch('datetime.datetime') as mock_datetime:
+        with patch('datetime.datetime') as mock_datetime:
             mock_datetime.utcnow.return_value = fixed_datetime
             mock_datetime.now.return_value = fixed_datetime
             yield mock_datetime

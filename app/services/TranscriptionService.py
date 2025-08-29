@@ -84,10 +84,8 @@ class TranscriptionService:
             logger.info(f"Starting transcription for voice attachment {voice_attachment_id} by user {user_id}")
             
             # Check if voice attachment exists and belongs to user
-            voice_attachment = await self.voice_attachment_repository.get_by_id_and_user(
-                voice_attachment_id, user_id
-            )
-            if not voice_attachment:
+            voice_attachment = await self.voice_attachment_repository.get_by_id(voice_attachment_id)
+            if not voice_attachment or voice_attachment.user_id != user_id:
                 raise ValidationError(
                     f"Voice attachment {voice_attachment_id} not found or not accessible",
                     error_code="VOICE_ATTACHMENT_NOT_FOUND"
@@ -158,10 +156,12 @@ class TranscriptionService:
             )
             
             # Update voice attachment transcription status
-            await self.voice_attachment_repository.update_transcription_status(
-                voice_attachment_id=voice_attachment_id,
-                is_transcribed=True,
-                transcription_confidence=transcription_result.confidence_score
+            await self.voice_attachment_repository.update(
+                voice_attachment_id, 
+                {
+                    "is_transcribed": True,
+                    "transcription_confidence": transcription_result.confidence_score
+                }
             )
             
             logger.info(f"Successfully saved transcription {transcription.id} for voice attachment {voice_attachment_id}")
@@ -231,7 +231,7 @@ class TranscriptionService:
             failed_count = 0
             
             for result in results:
-                if isinstance(result, Exception):
+                if isinstance(result, BaseException):
                     # Handle exceptions at the gather level
                     logger.error(f"Gather exception in batch transcription: {str(result)}")
                     failed_count += 1
@@ -389,10 +389,12 @@ class TranscriptionService:
             
             if deleted:
                 # Update voice attachment transcription status
-                await self.voice_attachment_repository.update_transcription_status(
-                    voice_attachment_id=transcription.voice_attachment_id,
-                    is_transcribed=False,
-                    transcription_confidence=None
+                await self.voice_attachment_repository.update(
+                    transcription.voice_attachment_id,
+                    {
+                        "is_transcribed": False,
+                        "transcription_confidence": None
+                    }
                 )
                 
                 logger.info(f"Deleted transcription {transcription_id}")
@@ -653,8 +655,8 @@ class TranscriptionService:
             )
         except Exception as e:
             logger.error(f"Failed to create transcription error: {str(e)}")
-            # Don't raise here - we don't want to mask the original error
-            return None
+            # Re-raise the exception since we can't create the error record
+            raise DatabaseError(f"Failed to create transcription error: {str(e)}")
 
     async def _sync_transcription_to_excel(
         self,

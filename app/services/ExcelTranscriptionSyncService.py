@@ -86,9 +86,14 @@ class ExcelTranscriptionSyncService:
             logger.info("Excel sync is disabled")
             return ExcelSyncResult(
                 status=ExcelSyncStatus.COMPLETED,
+                file_info=None,
                 worksheet_name="N/A",
                 rows_processed=0,
-                errors=["Excel sync is disabled"]
+                rows_updated=0,
+                rows_created=0,
+                errors=["Excel sync is disabled"],
+                processing_time_ms=0,
+                completed_at=datetime.utcnow()
             )
 
         start_time = datetime.utcnow()
@@ -97,7 +102,7 @@ class ExcelTranscriptionSyncService:
             logger.info(f"Starting Excel sync for transcription {transcription_id} by user {user_id}")
 
             # Get transcription data
-            transcription = await self.transcription_repository.get_transcription(transcription_id, user_id)
+            transcription = await self.transcription_repository.get_transcription_by_id(transcription_id, user_id)
             if not transcription:
                 raise ValidationError(f"Transcription {transcription_id} not found")
 
@@ -187,7 +192,11 @@ class ExcelTranscriptionSyncService:
             
             return ExcelSyncResult(
                 status=ExcelSyncStatus.FAILED,
+                file_info=None,
                 worksheet_name=worksheet_name if 'worksheet_name' in locals() else "Unknown",
+                rows_processed=0,
+                rows_updated=0,
+                rows_created=0,
                 errors=[str(e)],
                 processing_time_ms=processing_time_ms,
                 completed_at=datetime.utcnow()
@@ -216,8 +225,12 @@ class ExcelTranscriptionSyncService:
             logger.info("Excel sync is disabled")
             return ExcelBatchSyncResult(
                 month_year=month_year,
+                total_transcriptions=0,
+                synced_transcriptions=0,
+                skipped_transcriptions=0,
                 overall_status=ExcelSyncStatus.COMPLETED,
-                errors=["Excel sync is disabled"]
+                errors=["Excel sync is disabled"],
+                completed_at=datetime.utcnow()
             )
 
         start_time = datetime.utcnow()
@@ -242,7 +255,9 @@ class ExcelTranscriptionSyncService:
                     month_year=month_year,
                     overall_status=ExcelSyncStatus.COMPLETED,
                     total_transcriptions=0,
-                    synced_transcriptions=0
+                    synced_transcriptions=0,
+                    skipped_transcriptions=0,
+                    completed_at=datetime.utcnow()
                 )
 
             # Get or create Excel file tracking
@@ -293,6 +308,7 @@ class ExcelTranscriptionSyncService:
                     month_year=month_year,
                     total_transcriptions=len(transcriptions),
                     synced_transcriptions=sync_result.rows_processed,
+                    skipped_transcriptions=0,
                     sync_results=[sync_result],
                     overall_status=ExcelSyncStatus.COMPLETED,
                     completed_at=datetime.utcnow()
@@ -326,6 +342,9 @@ class ExcelTranscriptionSyncService:
             logger.error(f"Error in batch Excel sync: {str(e)}")
             return ExcelBatchSyncResult(
                 month_year=month_year,
+                total_transcriptions=0,
+                synced_transcriptions=0,
+                skipped_transcriptions=0,
                 overall_status=ExcelSyncStatus.FAILED,
                 errors=[str(e)],
                 completed_at=datetime.utcnow()
@@ -439,10 +458,14 @@ class ExcelTranscriptionSyncService:
                 logger.info(f"No new transcriptions to sync to worksheet {worksheet_name}")
                 return ExcelSyncResult(
                     status=ExcelSyncStatus.COMPLETED,
+                    file_info=None,
                     worksheet_name=worksheet_name,
                     rows_processed=0,
                     rows_created=0,
-                    rows_updated=0
+                    rows_updated=0,
+                    errors=[],
+                    processing_time_ms=0,
+                    completed_at=datetime.utcnow()
                 )
 
             # Convert transcriptions to Excel row data
@@ -475,10 +498,13 @@ class ExcelTranscriptionSyncService:
 
             return ExcelSyncResult(
                 status=ExcelSyncStatus.COMPLETED,
+                file_info=None,
                 worksheet_name=worksheet_name,
                 rows_processed=len(transcriptions_to_sync),
                 rows_created=len(transcriptions_to_sync) if not force_update else 0,
                 rows_updated=len(transcriptions_to_sync) if force_update else 0,
+                errors=[],
+                processing_time_ms=0,
                 completed_at=datetime.utcnow()
             )
 
@@ -486,8 +512,13 @@ class ExcelTranscriptionSyncService:
             logger.error(f"Error syncing transcriptions to worksheet: {str(e)}")
             return ExcelSyncResult(
                 status=ExcelSyncStatus.FAILED,
+                file_info=None,
                 worksheet_name=worksheet_name,
+                rows_processed=0,
+                rows_updated=0,
+                rows_created=0,
                 errors=[str(e)],
+                processing_time_ms=0,
                 completed_at=datetime.utcnow()
             )
 

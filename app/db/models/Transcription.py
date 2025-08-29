@@ -10,7 +10,7 @@ No JSON arrays - proper normalized relationships.
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, Index, Integer, ForeignKey, UniqueConstraint, CheckConstraint, Text, Float
 from sqlalchemy.dialects.mssql import NVARCHAR
@@ -19,7 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.DatabaseModel import Base, TimestampMixin, UUIDMixin
 
 # Forward reference imports for relationships
-if False:  # TYPE_CHECKING
+if TYPE_CHECKING:
     from .User import User
     from .VoiceAttachment import VoiceAttachment
 
@@ -65,8 +65,8 @@ class VoiceTranscription(Base, UUIDMixin, TimestampMixin):
     azure_model_deployment: Mapped[Optional[str]] = mapped_column(NVARCHAR(100), nullable=True)
     
     # Relationships
-    voice_attachment: Mapped["VoiceAttachment"] = relationship("VoiceAttachment")
-    user: Mapped["User"] = relationship("User")
+    voice_attachment: Mapped["VoiceAttachment"] = relationship("VoiceAttachment", back_populates="transcription")
+    user: Mapped["User"] = relationship("User", back_populates="voice_transcriptions")
     segments: Mapped[List["TranscriptionSegment"]] = relationship("TranscriptionSegment", back_populates="transcription", cascade="all, delete-orphan")
     errors: Mapped[List["TranscriptionError"]] = relationship("TranscriptionError", back_populates="transcription", cascade="all, delete-orphan")
 
@@ -202,7 +202,7 @@ class TranscriptionError(Base, UUIDMixin, TimestampMixin):
     # Relationships
     transcription: Mapped[Optional["VoiceTranscription"]] = relationship("VoiceTranscription", back_populates="errors")
     voice_attachment: Mapped["VoiceAttachment"] = relationship("VoiceAttachment")
-    user: Mapped["User"] = relationship("User")
+    user: Mapped["User"] = relationship("User", back_populates="transcription_errors")
 
     # Constraints and indexes
     __table_args__ = (

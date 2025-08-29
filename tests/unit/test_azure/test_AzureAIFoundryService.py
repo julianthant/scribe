@@ -209,7 +209,7 @@ class TestAzureAIFoundryService:
     @pytest.mark.asyncio
     async def test_get_access_token_success(self, ai_service):
         """Test successful access token acquisition."""
-        with patch.object(ai_service, 'credential') as mock_credential:
+        with patch.object(ai_service, '_credential') as mock_credential:
             future_time = datetime.utcnow() + timedelta(hours=1)
             mock_token = Mock()
             mock_token.token = "test-access-token"
@@ -226,7 +226,7 @@ class TestAzureAIFoundryService:
     @pytest.mark.asyncio
     async def test_get_access_token_caching(self, ai_service):
         """Test access token caching behavior."""
-        with patch.object(ai_service, 'credential') as mock_credential:
+        with patch.object(ai_service, '_credential') as mock_credential:
             future_time = datetime.utcnow() + timedelta(hours=1)
             mock_token = Mock()
             mock_token.token = "cached-token"
@@ -247,7 +247,7 @@ class TestAzureAIFoundryService:
     @pytest.mark.asyncio
     async def test_get_access_token_refresh_before_expiry(self, ai_service):
         """Test token refresh before expiry (5 minutes buffer)."""
-        with patch.object(ai_service, 'credential') as mock_credential:
+        with patch.object(ai_service, '_credential') as mock_credential:
             # Token expires in 3 minutes (less than 5 minute buffer)
             near_expiry = datetime.utcnow() + timedelta(minutes=3)
             mock_token = Mock()
@@ -268,7 +268,7 @@ class TestAzureAIFoundryService:
     @pytest.mark.asyncio
     async def test_get_access_token_force_refresh(self, ai_service):
         """Test forced token refresh."""
-        with patch.object(ai_service, 'credential') as mock_credential:
+        with patch.object(ai_service, '_credential') as mock_credential:
             future_time = datetime.utcnow() + timedelta(hours=1)
             mock_token = Mock()
             mock_token.token = "force-refreshed-token"
@@ -289,7 +289,7 @@ class TestAzureAIFoundryService:
     @pytest.mark.asyncio
     async def test_get_access_token_credential_error(self, ai_service):
         """Test handling of credential acquisition errors."""
-        with patch.object(ai_service, 'credential') as mock_credential:
+        with patch.object(ai_service, '_credential') as mock_credential:
             mock_credential.get_token.side_effect = ClientAuthenticationError("Auth failed")
             
             with pytest.raises(AuthenticationError):
@@ -772,27 +772,30 @@ class TestAzureAIFoundryService:
                     )
 
     def test_validate_audio_content_types(self, ai_service):
-        """Test validation of different audio content types."""
-        # Valid content types should not raise exceptions
-        valid_types = ["audio/wav", "audio/mpeg", "audio/mp4", "audio/ogg"]
+        """Test content type detection from filenames."""
+        # Test content type detection from filenames
+        test_cases = [
+            ("test.wav", "audio/wav"),
+            ("test.mp3", "audio/mpeg"),
+            ("test.m4a", "audio/m4a"),
+            ("test.ogg", "audio/ogg")
+        ]
         
-        for content_type in valid_types:
-            # This method would be used internally for validation
-            result = ai_service._validate_content_type(content_type)
-            assert result is True or result is None  # Implementation dependent
+        for filename, expected_content_type in test_cases:
+            # This method exists and returns content type from filename
+            result = ai_service._get_content_type(filename)
+            assert result == expected_content_type
 
-    def test_error_message_extraction(self, ai_service):
-        """Test extraction of meaningful error messages from responses."""
-        error_response = {
-            "error": {
-                "message": "The model deployment 'invalid-model' was not found.",
-                "type": "invalid_request_error",
-                "code": "DeploymentNotFound"
-            }
-        }
+    def test_content_type_edge_cases(self, ai_service):
+        """Test content type detection for edge cases."""
+        edge_cases = [
+            ("test", "audio/wav"),  # No extension -> defaults to audio/wav
+            ("test.txt", "audio/wav"),  # Non-audio file -> defaults to audio/wav
+            ("TEST.WAV", "audio/wav"),  # Uppercase extension
+            ("file.with.dots.mp3", "audio/mpeg"),  # Multiple dots
+            ("", "audio/wav"),  # Empty filename -> returns audio/wav
+        ]
         
-        # This would be used for better error reporting
-        error_msg = ai_service._extract_error_message(error_response)
-        
-        assert "not found" in error_msg.lower()
-        assert "invalid-model" in error_msg
+        for filename, expected_content_type in edge_cases:
+            result = ai_service._get_content_type(filename)
+            assert result == expected_content_type

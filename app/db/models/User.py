@@ -8,7 +8,7 @@ Following 3NF normalization:
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 from enum import Enum
 
 from sqlalchemy import Boolean, DateTime, Index, String, ForeignKey, Enum as SQLEnum
@@ -18,9 +18,12 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.DatabaseModel import Base, TimestampMixin, UUIDMixin, create_email_column, create_azure_id_column
 
 # Forward reference imports for relationships
-if False:  # TYPE_CHECKING
+if TYPE_CHECKING:
     from .MailAccount import MailAccount
     from .Operational import AuditLog
+    from .VoiceAttachment import VoiceAttachment, VoiceAttachmentDownload
+    from .Transcription import VoiceTranscription, TranscriptionError
+    from .ExcelSyncTracking import ExcelFile, ExcelSyncOperation, ExcelSyncError
 
 
 class UserRole(Enum):
@@ -34,7 +37,7 @@ class User(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "users"
 
     # Core authentication fields
-    azure_id: Mapped[Optional[str]] = create_azure_id_column(nullable=False, unique=True)
+    azure_id: Mapped[str] = create_azure_id_column(nullable=False, unique=True)
     email: Mapped[str] = create_email_column(nullable=False, unique=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     role: Mapped[UserRole] = mapped_column(
@@ -48,6 +51,19 @@ class User(Base, UUIDMixin, TimestampMixin):
     sessions: Mapped[List["Session"]] = relationship("Session", back_populates="user", cascade="all, delete-orphan")
     mail_accounts: Mapped[List["MailAccount"]] = relationship("MailAccount", back_populates="user", cascade="all, delete-orphan")
     audit_logs: Mapped[List["AuditLog"]] = relationship("AuditLog", back_populates="user")
+    
+    # Voice attachment relationships
+    voice_attachments: Mapped[List["VoiceAttachment"]] = relationship("VoiceAttachment", back_populates="user")
+    voice_attachment_downloads: Mapped[List["VoiceAttachmentDownload"]] = relationship("VoiceAttachmentDownload", back_populates="user")
+    
+    # Transcription relationships
+    voice_transcriptions: Mapped[List["VoiceTranscription"]] = relationship("VoiceTranscription", back_populates="user")
+    transcription_errors: Mapped[List["TranscriptionError"]] = relationship("TranscriptionError", back_populates="user")
+    
+    # Excel sync relationships  
+    excel_files: Mapped[List["ExcelFile"]] = relationship("ExcelFile", back_populates="user")
+    excel_sync_operations: Mapped[List["ExcelSyncOperation"]] = relationship("ExcelSyncOperation", back_populates="user")
+    excel_sync_errors: Mapped[List["ExcelSyncError"]] = relationship("ExcelSyncError", back_populates="user")
 
     # Indexes
     __table_args__ = (
