@@ -17,7 +17,7 @@ from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, timedelta
 import logging
 
-from sqlalchemy import and_, or_, func, desc, asc, select, update, delete
+from sqlalchemy import and_, or_, func, desc, asc, select, update, delete, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -28,11 +28,12 @@ from app.core.Exceptions import ValidationError, DatabaseError
 logger = logging.getLogger(__name__)
 
 
-class VoiceAttachmentRepository:
+class VoiceAttachmentRepository(BaseRepository[VoiceAttachment, Dict[str, Any], Dict[str, Any]]):
     """Repository for voice attachment metadata operations."""
 
     def __init__(self, db_session: AsyncSession):
         """Initialize repository with database session."""
+        super().__init__(VoiceAttachment, db_session)
         self.db_session = db_session
     
     async def create_voice_attachment(
@@ -361,19 +362,21 @@ class VoiceAttachmentRepository:
                 conditions.append(VoiceAttachment.received_at >= cutoff_date)
             
             # Build query with all conditions
-            base_filter = and_(*conditions) if conditions else True
+            base_filter = and_(*conditions) if conditions else None
             
             # Get basic counts
             count_stmt = select(
                 func.count(VoiceAttachment.id).label("total_count"),
-                func.count(VoiceAttachment.id).filter(VoiceAttachment.storage_status == "stored").label("stored_count"),
-                func.count(VoiceAttachment.id).filter(VoiceAttachment.storage_status == "deleted").label("deleted_count"),
+                func.count(case((VoiceAttachment.storage_status == "stored", VoiceAttachment.id))).label("stored_count"),
+                func.count(case((VoiceAttachment.storage_status == "deleted", VoiceAttachment.id))).label("deleted_count"),
                 func.sum(VoiceAttachment.size_bytes).label("total_size"),
                 func.sum(VoiceAttachment.download_count).label("total_downloads"),
                 func.avg(VoiceAttachment.size_bytes).label("avg_size"),
                 func.max(VoiceAttachment.received_at).label("latest_received"),
                 func.min(VoiceAttachment.received_at).label("earliest_received")
-            ).where(base_filter)
+            )
+            if base_filter is not None:
+                count_stmt = count_stmt.where(base_filter)
             
             result = await self.db_session.execute(count_stmt)
             stats_row = result.one()
@@ -383,7 +386,10 @@ class VoiceAttachmentRepository:
                 VoiceAttachment.content_type,
                 func.count(VoiceAttachment.id).label("count"),
                 func.sum(VoiceAttachment.size_bytes).label("total_size")
-            ).where(base_filter).group_by(VoiceAttachment.content_type)
+            )
+            if base_filter is not None:
+                content_type_stmt = content_type_stmt.where(base_filter)
+            content_type_stmt = content_type_stmt.group_by(VoiceAttachment.content_type)
             
             content_type_result = await self.db_session.execute(content_type_stmt)
             content_types = {

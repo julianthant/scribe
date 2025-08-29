@@ -8,7 +8,7 @@ Simplified model - mail messages, attachments, categories, and recipients
 are handled externally via Microsoft Graph API calls, not stored in database.
 """
 
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 
 from sqlalchemy import Boolean, Index, ForeignKey, CheckConstraint
 from sqlalchemy.dialects.mssql import NVARCHAR
@@ -17,7 +17,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.DatabaseModel import Base, TimestampMixin, UUIDMixin, create_azure_id_column
 
 # Forward reference imports for relationships
-if False:  # TYPE_CHECKING
+if TYPE_CHECKING:
     from .MailAccount import MailAccount, SharedMailbox
 
 
@@ -39,8 +39,15 @@ class MailFolder(Base, UUIDMixin, TimestampMixin):
     # Relationships
     mail_account: Mapped[Optional["MailAccount"]] = relationship("MailAccount", back_populates="folders")
     shared_mailbox: Mapped[Optional["SharedMailbox"]] = relationship("SharedMailbox", back_populates="folders")
-    parent_folder: Mapped[Optional["MailFolder"]] = relationship("MailFolder", remote_side="MailFolder.id")
-    child_folders: Mapped[List["MailFolder"]] = relationship("MailFolder")
+    parent_folder: Mapped[Optional["MailFolder"]] = relationship(
+        "MailFolder", 
+        remote_side="MailFolder.id",
+        back_populates="child_folders"
+    )
+    child_folders: Mapped[List["MailFolder"]] = relationship(
+        "MailFolder",
+        back_populates="parent_folder"
+    )
 
     # Constraints and indexes
     __table_args__ = (

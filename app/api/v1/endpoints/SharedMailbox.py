@@ -24,7 +24,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Depends, Query, Path
 
 from app.services.SharedMailboxService import SharedMailboxService
-from app.dependencies.Auth import get_current_user
+from app.dependencies.Auth import get_current_user_info_only
 from app.dependencies.SharedMailbox import get_shared_mailbox_service
 from app.models.AuthModel import UserInfo
 from app.models.SharedMailboxModel import (
@@ -43,7 +43,7 @@ router = APIRouter(prefix="/shared-mailboxes", tags=["shared-mailboxes"])
 
 @router.get("", response_model=SharedMailboxListResponse)
 async def list_accessible_shared_mailboxes(
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     shared_mailbox_service: SharedMailboxService = Depends(get_shared_mailbox_service)
 ):
     """Get all shared mailboxes the current user has access to.
@@ -68,7 +68,7 @@ async def list_accessible_shared_mailboxes(
 @router.get("/{email_address}", response_model=SharedMailboxAccess)
 async def get_shared_mailbox_details(
     email_address: str = Path(..., description="Shared mailbox email address"),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     shared_mailbox_service: SharedMailboxService = Depends(get_shared_mailbox_service)
 ):
     """Get detailed information about a specific shared mailbox.
@@ -102,7 +102,7 @@ async def get_shared_mailbox_details(
 @router.get("/{email_address}/folders", response_model=List[MailFolder])
 async def list_shared_mailbox_folders(
     email_address: str = Path(..., description="Shared mailbox email address"),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     shared_mailbox_service: SharedMailboxService = Depends(get_shared_mailbox_service)
 ):
     """Get all folders from a shared mailbox.
@@ -138,7 +138,7 @@ async def create_shared_mailbox_folder(
     folder_name: str,
     email_address: str = Path(..., description="Shared mailbox email address"),
     parent_id: Optional[str] = Query(None, description="Parent folder ID"),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     shared_mailbox_service: SharedMailboxService = Depends(get_shared_mailbox_service)
 ):
     """Create a new folder in a shared mailbox.
@@ -180,7 +180,7 @@ async def list_shared_mailbox_messages(
     has_attachments: Optional[bool] = Query(None, description="Filter by attachment presence"),
     top: int = Query(25, ge=1, le=1000, description="Number of messages to return"),
     skip: int = Query(0, ge=0, description="Number of messages to skip"),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     shared_mailbox_service: SharedMailboxService = Depends(get_shared_mailbox_service)
 ):
     """Get messages from a shared mailbox.
@@ -225,7 +225,7 @@ async def list_shared_mailbox_messages(
 async def send_shared_mailbox_message(
     request: SendAsSharedRequest,
     email_address: str = Path(..., description="Shared mailbox email address"),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     shared_mailbox_service: SharedMailboxService = Depends(get_shared_mailbox_service)
 ):
     """Send a message from a shared mailbox.
@@ -263,7 +263,7 @@ async def send_shared_mailbox_message(
 async def organize_shared_mailbox_messages(
     request: OrganizeSharedMailboxRequest,
     email_address: str = Path(..., description="Shared mailbox email address"),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     shared_mailbox_service: SharedMailboxService = Depends(get_shared_mailbox_service)
 ):
     """Organize messages in a shared mailbox (e.g., voice messages into a folder).
@@ -300,7 +300,7 @@ async def organize_shared_mailbox_messages(
 @router.post("/search", response_model=SharedMailboxSearchResponse)
 async def search_shared_mailboxes(
     request: SharedMailboxSearchRequest,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     shared_mailbox_service: SharedMailboxService = Depends(get_shared_mailbox_service)
 ):
     """Search across multiple shared mailboxes.
@@ -331,7 +331,7 @@ async def search_shared_mailboxes(
 @router.get("/{email_address}/statistics", response_model=SharedMailboxStatistics)
 async def get_shared_mailbox_statistics(
     email_address: str = Path(..., description="Shared mailbox email address"),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     shared_mailbox_service: SharedMailboxService = Depends(get_shared_mailbox_service)
 ):
     """Get comprehensive statistics for a shared mailbox.
@@ -366,7 +366,7 @@ async def get_shared_mailbox_statistics(
 async def get_voice_messages_across_mailboxes(
     mailbox_addresses: List[str] = Query(..., description="List of mailbox email addresses"),
     top: int = Query(50, ge=1, le=200, description="Maximum messages to check per mailbox"),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     shared_mailbox_service: SharedMailboxService = Depends(get_shared_mailbox_service)
 ):
     """Get voice messages from multiple shared mailboxes.
@@ -432,7 +432,7 @@ async def organize_voice_messages_in_shared_mailbox(
     email_address: str = Path(..., description="Shared mailbox email address"),
     target_folder: str = Query("Voice Messages", description="Target folder name"),
     create_folder: bool = Query(True, description="Create folder if it doesn't exist"),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     shared_mailbox_service: SharedMailboxService = Depends(get_shared_mailbox_service)
 ):
     """Auto-organize voice messages in a shared mailbox into a dedicated folder.
@@ -480,7 +480,7 @@ async def organize_voice_messages_in_shared_mailbox(
 async def get_shared_mailboxes_usage_analytics(
     mailbox_addresses: Optional[List[str]] = Query(None, description="Specific mailboxes to analyze"),
     days: int = Query(30, ge=1, le=365, description="Number of days to analyze"),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     shared_mailbox_service: SharedMailboxService = Depends(get_shared_mailbox_service)
 ):
     """Get usage analytics across shared mailboxes.

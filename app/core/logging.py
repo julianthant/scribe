@@ -18,7 +18,8 @@ import logging
 import sys
 import time
 from functools import wraps
-from typing import Callable, Any
+from typing import Optional, Dict, Any
+from typing import Callable, Any, Dict
 from datetime import datetime
 
 from app.core.config import settings
@@ -94,7 +95,7 @@ def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(name)
 
 
-def log_execution_time(func: Callable) -> Callable:
+def log_execution_time(func: Callable[..., Any]) -> Callable[..., Any]:
     """Decorator to log function execution time."""
     
     @wraps(func)
@@ -162,7 +163,7 @@ def log_api_request(
 def log_error(
     error: Exception,
     context: str | None = None,
-    extra_data: dict | None = None
+    extra_data: Dict[str, Any] | None = None
 ) -> None:
     """Log error with context."""
     logger = get_logger("app.errors")
@@ -179,8 +180,8 @@ def log_startup_component(
     component_name: str,
     start_time: float,
     success: bool = True,
-    error: Exception = None,
-    details: dict = None
+    error: Optional[Exception] = None,
+    details: Optional[Dict[str, Any]] = None
 ) -> None:
     """Log startup component initialization."""
     logger = get_logger("app.startup")
@@ -199,8 +200,8 @@ def log_startup_component(
 
 def log_service_startup(
     service_name: str,
-    version: str = None,
-    config_details: dict = None
+    version: Optional[str] = None,
+    config_details: Optional[Dict[str, Any]] = None
 ) -> None:
     """Log service startup information."""
     logger = get_logger("app.services")

@@ -116,7 +116,7 @@ class TestUserInfo:
             "id": "admin-user-456",
             "email": "admin@example.com",
             "display_name": "Admin User",
-            "role": UserRole.ADMIN,
+            "role": UserRole.SUPERUSER,
             "is_superuser": True
         }
 
@@ -124,11 +124,11 @@ class TestUserInfo:
         user_info = UserInfo(**admin_data)
 
         # Assert
-        assert user_info.role == UserRole.ADMIN
+        assert user_info.role == UserRole.SUPERUSER
         assert user_info.is_superuser is True
         assert user_info.email == "admin@example.com"
 
-    @pytest.mark.parametrize("role", [UserRole.USER, UserRole.ADMIN])
+    @pytest.mark.parametrize("role", [UserRole.USER, UserRole.SUPERUSER])
     def test_user_info_various_roles(self, role):
         """Test UserInfo with various role types."""
         # Arrange
@@ -170,7 +170,7 @@ class TestUserInfo:
         user_data = {
             "id": "json-test",
             "email": "json@example.com",
-            "role": UserRole.ADMIN
+            "role": UserRole.SUPERUSER
         }
         user_info = UserInfo(**user_data)
 
@@ -514,7 +514,7 @@ class TestModelIntegration:
             id="admin-123",
             email="admin@example.com",
             display_name="Admin User",
-            role=UserRole.ADMIN,
+            role=UserRole.SUPERUSER,
             is_superuser=True
         )
         token_data = {
@@ -527,7 +527,7 @@ class TestModelIntegration:
         token_response = TokenResponse(**token_data)
 
         # Assert
-        assert token_response.user_info.role == UserRole.ADMIN
+        assert token_response.user_info.role == UserRole.SUPERUSER
         assert token_response.user_info.is_superuser is True
         assert token_response.user_info.email == "admin@example.com"
 

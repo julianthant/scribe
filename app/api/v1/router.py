@@ -19,13 +19,18 @@ The router is included in the main FastAPI application with the /api/v1 prefix.
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, Mail, SharedMailbox, Transcription, VoiceAttachment, ExcelSync
+from app.api.v1.endpoints import Auth
+from app.api.v1.endpoints.mail import router as mail_router
+from app.api.v1.endpoints.SharedMailbox import router as shared_mailbox_router
+from app.api.v1.endpoints.Transcription import router as transcription_router
+from app.api.v1.endpoints.VoiceAttachment import router as voice_attachment_router
+from app.api.v1.endpoints.ExcelSync import router as excel_sync_router
 
 router = APIRouter()
 
-router.include_router(auth.router)
-router.include_router(Mail.router)
-router.include_router(SharedMailbox.router)
-router.include_router(Transcription.router)
-router.include_router(VoiceAttachment.router)
-router.include_router(ExcelSync.router)
+router.include_router(Auth.router)
+router.include_router(mail_router)
+router.include_router(shared_mailbox_router)
+router.include_router(transcription_router)
+router.include_router(voice_attachment_router)
+router.include_router(excel_sync_router)

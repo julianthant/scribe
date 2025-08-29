@@ -15,7 +15,7 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 from enum import Enum
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class ExcelSyncStatus(str, Enum):
@@ -72,21 +72,24 @@ class TranscriptionRowData(BaseModel):
     model_used: str = Field(..., description="AI model used for transcription")
     processing_time_ms: Optional[int] = Field(None, description="Processing time in milliseconds")
 
-    @validator('confidence_score')
+    @field_validator('confidence_score')
+    @classmethod
     def validate_confidence_score(cls, v):
         """Validate confidence score is between 0 and 1."""
         if v is not None and (v < 0 or v > 1):
             raise ValueError('Confidence score must be between 0 and 1')
         return v
 
-    @validator('audio_duration')
+    @field_validator('audio_duration')
+    @classmethod
     def validate_audio_duration(cls, v):
         """Validate audio duration is positive."""
         if v is not None and v < 0:
             raise ValueError('Audio duration must be positive')
         return v
 
-    @validator('processing_time_ms')
+    @field_validator('processing_time_ms')
+    @classmethod
     def validate_processing_time(cls, v):
         """Validate processing time is positive."""
         if v is not None and v < 0:

@@ -26,8 +26,8 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse
 
 from app.services.MailService import MailService
-from app.dependencies.Auth import get_current_user
-from app.dependencies.mail import get_mail_service
+from app.dependencies.Auth import get_current_user_info_only
+from app.dependencies.Mail import get_mail_service
 from app.models.AuthModel import UserInfo
 from app.models.MailModel import (
     MailFolder, Message, MessageListResponse, 
@@ -43,7 +43,7 @@ router = APIRouter(prefix="/mail", tags=["mail"])
 
 @router.get("/folders", response_model=List[MailFolder])
 async def list_mail_folders(
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     mail_service: MailService = Depends(get_mail_service)
 ):
     """Get all mail folders.
@@ -68,7 +68,7 @@ async def list_mail_folders(
 @router.post("/folders", response_model=MailFolder)
 async def create_mail_folder(
     request: CreateFolderRequest,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     mail_service: MailService = Depends(get_mail_service)
 ):
     """Create a new mail folder.
@@ -102,7 +102,7 @@ async def list_messages(
     has_attachments: Optional[bool] = Query(None, description="Filter by attachment presence"),
     top: int = Query(25, ge=1, le=1000, description="Number of messages to return"),
     skip: int = Query(0, ge=0, description="Number of messages to skip"),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     mail_service: MailService = Depends(get_mail_service)
 ):
     """Get messages from a folder or mailbox.
@@ -144,7 +144,7 @@ async def list_messages(
 @router.get("/messages/{message_id}", response_model=Message)
 async def get_message(
     message_id: str,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     mail_service: MailService = Depends(get_mail_service)
 ):
     """Get a specific message by ID.
@@ -174,7 +174,7 @@ async def get_message(
 @router.get("/messages/{message_id}/attachments", response_model=List[Attachment])
 async def list_message_attachments(
     message_id: str,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     mail_service: MailService = Depends(get_mail_service)
 ):
     """Get all attachments for a message.
@@ -205,7 +205,7 @@ async def list_message_attachments(
 async def download_attachment(
     message_id: str,
     attachment_id: str,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     mail_service: MailService = Depends(get_mail_service)
 ):
     """Download an attachment.
@@ -262,7 +262,7 @@ async def download_attachment(
 async def move_message(
     message_id: str,
     request: MoveMessageRequest,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     mail_service: MailService = Depends(get_mail_service)
 ):
     """Move a message to a different folder.
@@ -297,7 +297,7 @@ async def move_message(
 async def update_message(
     message_id: str,
     request: UpdateMessageRequest,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     mail_service: MailService = Depends(get_mail_service)
 ):
     """Update message properties.
@@ -345,7 +345,7 @@ async def update_message(
 @router.post("/search", response_model=MessageListResponse)
 async def search_messages(
     request: SearchMessagesRequest,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     mail_service: MailService = Depends(get_mail_service)
 ):
     """Search messages with various filters.
@@ -376,7 +376,7 @@ async def search_messages(
 @router.get("/statistics", response_model=FolderStatistics)
 async def get_mail_statistics(
     folder_id: Optional[str] = Query(None, description="Folder ID (if None, gets entire mailbox stats)"),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     mail_service: MailService = Depends(get_mail_service)
 ):
     """Get mail statistics for a folder or entire mailbox.

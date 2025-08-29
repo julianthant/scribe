@@ -21,7 +21,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from fastapi.responses import RedirectResponse
 
 from app.services.OAuthService import OAuthService
-from app.dependencies.Auth import get_current_user, get_current_user_optional, get_user_repository
+from app.dependencies.Auth import get_current_user_info_only, get_current_user_optional, get_user_repository
 from app.repositories.UserRepository import UserRepository
 from app.models.AuthModel import (
     LoginResponse,
@@ -119,8 +119,25 @@ async def handle_oauth_callback(
             user_agent=user_agent
         )
         
+        # Store authentication state for automatic header injection
+        from app.core.AuthState import store_user_auth
+        store_user_auth(token_response)
+        
         logger.info(f"User successfully authenticated: {token_response.user_info.email}")
-        return token_response
+        
+        # Create response with authentication cookies
+        from fastapi.responses import JSONResponse
+        from app.middleware.AuthMiddleware import set_auth_cookies
+        from app.core.AuthState import AuthenticationState
+        
+        response_data = token_response.model_dump(mode='json')
+        response = JSONResponse(content=response_data)
+        
+        # Set authentication cookies
+        auth_state = AuthenticationState.from_token_response(token_response)
+        set_auth_cookies(response, auth_state, secure=False)  # Set to True in production
+        
+        return response
         
     except ValidationError as e:
         logger.error(f"Callback validation failed: {str(e)}")
@@ -168,23 +185,48 @@ async def refresh_access_token(
 
 @router.post("/logout", response_model=LogoutResponse)
 async def logout(
+    request: Request,
     session_id: Optional[str] = None,
     oauth_service: OAuthService = Depends(get_oauth_service)
 ):
     """Logout user and clean up session.
     
     Args:
+        request: FastAPI request object
         session_id: Optional session identifier
         
     Returns:
-        LogoutResponse: Logout status and message
+        LogoutResponse: Logout status and message with cleared cookies
     """
     try:
+        # Get session ID from cookies if not provided
+        if not session_id:
+            from app.middleware.AuthMiddleware import get_session_from_cookies
+            session_id = get_session_from_cookies(request)
+        
+        # Clear stored authentication state
+        from app.core.AuthState import logout_user_by_session
+        auth_state_cleared = False
+        if session_id:
+            auth_state_cleared = logout_user_by_session(session_id)
+        
+        # Perform standard logout
         success = await oauth_service.logout(session_id)
         
-        if success:
+        if success or auth_state_cleared:
             logger.info("User logged out successfully")
-            return LogoutResponse(success=True, message="Successfully logged out")
+            
+            # Create response with cleared cookies
+            from fastapi.responses import JSONResponse
+            from app.middleware.AuthMiddleware import clear_auth_cookies
+            
+            response_data = LogoutResponse(success=True, message="Successfully logged out").model_dump(mode='json')
+            response = JSONResponse(content=response_data)
+            
+            # Clear authentication cookies
+            clear_auth_cookies(response)
+            
+            return response
         else:
             logger.warning("Logout failed")
             return LogoutResponse(success=False, message="Logout failed")
@@ -196,7 +238,7 @@ async def logout(
 
 @router.get("/me", response_model=UserInfo)
 async def get_current_user_info(
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     oauth_service: OAuthService = Depends(get_oauth_service)
 ):
     """Get current authenticated user information.
@@ -232,3 +274,7 @@ async def get_auth_status(
             user_info=None,
             expires_at=None
         )
+
+
+# Debug endpoints removed for security - these exposed sensitive authentication data
+# If debugging is needed in development, create a separate debug module with proper environment checks

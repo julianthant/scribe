@@ -12,7 +12,12 @@
       "Bash(python:*)",
       "Read(/C:\\c\\Users\\Julian\\Projects/**)",
       "Bash(alembic stamp:*)",
-      "Bash(alembic revision:*)"
+      "Bash(alembic revision:*)",
+      "Bash(alembic:*)",
+      "Bash(taskkill:*)",
+      "Bash(curl:*)",
+      "Bash(find:*)",
+      "Bash(pytest:*)"
     ],
     "deny": [],
     "ask": [],

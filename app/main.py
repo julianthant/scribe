@@ -13,28 +13,17 @@ It sets up:
 The application provides a REST API for email operations with Azure AD authentication.
 """
 
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
 
 from app.core.config import settings, validate_required_settings
 from app.core.Logging import (
     setup_logging, 
-    log_api_request, 
     log_startup_component,
     log_service_startup,
     get_logger
 )
-from app.core.Exceptions import (
-    ScribeBaseException,
-    ValidationError,
-    NotFoundError,
-    AuthenticationError,
-    AuthorizationError,
-    DatabaseError,
-    RateLimitError
-)
-from app.models.BaseModel import ErrorResponse, WelcomeResponse, HealthResponse
+from app.models.BaseModel import WelcomeResponse, HealthResponse
 from app.api.v1.router import router as v1_router
 from app.core.Exceptions import DatabaseError
 import time
@@ -74,214 +63,13 @@ except Exception as e:
     )
     raise
 
-# Initialize FastAPI application
-fastapi_start_time = time.time()
-app = FastAPI(
-    title=settings.app_name,
-    description="A FastAPI application with strict coding standards",
-    version=settings.app_version,
-    debug=settings.debug
-)
-log_startup_component(
-    "FastAPI Application",
-    fastapi_start_time,
-    success=True,
-    details={
-        "Title": settings.app_name,
-        "Version": settings.app_version,
-        "Debug": settings.debug
-    }
-)
-
-# CORS Middleware
-cors_start_time = time.time()
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.backend_cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-log_startup_component(
-    "CORS Middleware",
-    cors_start_time,
-    success=True,
-    details={
-        "Allowed Origins": len(settings.backend_cors_origins),
-        "Allow Credentials": True
-    }
-)
-
-# Request logging middleware
-middleware_start_time = time.time()
-
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    start_time = time.time()
-    response = await call_next(request)
-    process_time = time.time() - start_time
-    
-    # Log the request
-    log_api_request(
-        method=request.method,
-        path=str(request.url.path),
-        status_code=response.status_code,
-        response_time=process_time,
-        client_ip=request.client.host if request.client else "unknown"
-    )
-    
-    return response
-
-log_startup_component(
-    "Request Logging Middleware",
-    middleware_start_time,
-    success=True
-)
-
-# Include routers
-router_start_time = time.time()
-app.include_router(v1_router, prefix=settings.api_v1_prefix)
-log_startup_component(
-    "API Routes",
-    router_start_time,
-    success=True,
-    details={
-        "API Prefix": settings.api_v1_prefix,
-        "Router": "v1_router"
-    }
-)
-
-# Exception handlers
-@app.exception_handler(ValidationError)
-async def validation_exception_handler(
-    request: Request, 
-    exc: ValidationError
-) -> JSONResponse:
-    return JSONResponse(
-        status_code=400,
-        content=ErrorResponse(
-            error="Validation Error",
-            message=exc.message,
-            error_code=exc.error_code,
-            details=exc.details
-        ).model_dump()
-    )
-
-@app.exception_handler(NotFoundError)
-async def not_found_exception_handler(
-    request: Request, 
-    exc: NotFoundError
-) -> JSONResponse:
-    return JSONResponse(
-        status_code=404,
-        content=ErrorResponse(
-            error="Not Found",
-            message=exc.message,
-            error_code=exc.error_code,
-            details=exc.details
-        ).model_dump()
-    )
-
-@app.exception_handler(AuthenticationError)
-async def authentication_exception_handler(
-    request: Request, 
-    exc: AuthenticationError
-) -> JSONResponse:
-    return JSONResponse(
-        status_code=401,
-        content=ErrorResponse(
-            error="Authentication Error",
-            message=exc.message,
-            error_code=exc.error_code,
-            details=exc.details
-        ).model_dump()
-    )
-
-@app.exception_handler(AuthorizationError)
-async def authorization_exception_handler(
-    request: Request, 
-    exc: AuthorizationError
-) -> JSONResponse:
-    return JSONResponse(
-        status_code=403,
-        content=ErrorResponse(
-            error="Authorization Error",
-            message=exc.message,
-            error_code=exc.error_code,
-            details=exc.details
-        ).model_dump()
-    )
-
-@app.exception_handler(DatabaseError)
-async def database_exception_handler(
-    request: Request, 
-    exc: DatabaseError
-) -> JSONResponse:
-    return JSONResponse(
-        status_code=500,
-        content=ErrorResponse(
-            error="Database Error",
-            message="An internal database error occurred",
-            error_code=exc.error_code,
-            details={"operation": exc.details.get("operation")} if exc.details else None
-        ).model_dump()
-    )
-
-@app.exception_handler(RateLimitError)
-async def rate_limit_exception_handler(
-    request: Request, 
-    exc: RateLimitError
-) -> JSONResponse:
-    return JSONResponse(
-        status_code=429,
-        content=ErrorResponse(
-            error="Rate Limit Exceeded",
-            message=exc.message,
-            error_code=exc.error_code,
-            details=exc.details
-        ).model_dump()
-    )
-
-@app.exception_handler(ScribeBaseException)
-async def scribe_exception_handler(
-    request: Request, 
-    exc: ScribeBaseException
-) -> JSONResponse:
-    return JSONResponse(
-        status_code=500,
-        content=ErrorResponse(
-            error="Internal Error",
-            message=exc.message,
-            error_code=exc.error_code,
-            details=exc.details
-        ).model_dump()
-    )
-
-# Root endpoints
-@app.get("/", response_model=WelcomeResponse)
-async def root() -> WelcomeResponse:
-    """Welcome endpoint."""
-    return WelcomeResponse(
-        message="Welcome to Scribe API",
-        version=settings.app_version,
-        docs_url="/docs"
-    )
-
-@app.get("/health", response_model=HealthResponse)
-async def health_check() -> HealthResponse:
-    """Health check endpoint."""
-    return HealthResponse(
-        status="healthy",
-        version=settings.app_version
-    )
-
-
-# Startup event handler
-@app.on_event("startup")
-async def startup_event():
-    """Application startup event handler."""
+# Lifespan context manager for startup and shutdown events
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan event handler."""
     startup_logger = get_logger("app.startup")
     
+    # Startup
     # Initialize and test database connection
     await initialize_database()
     
@@ -311,6 +99,12 @@ async def startup_event():
         }
     )
     
+    # Start authentication state cleanup task
+    from app.core.AuthState import cleanup_expired_tokens_periodically
+    import asyncio
+    cleanup_task = asyncio.create_task(cleanup_expired_tokens_periodically())
+    startup_logger.info("[SERVICE] Started authentication state cleanup task")
+    
     # Calculate total startup time
     total_startup_time = (time.time() - app_start_time) * 1000
     startup_logger.info("\n" + "="*80)
@@ -319,6 +113,92 @@ async def startup_event():
     startup_logger.info(f"[URL] API Documentation: http://localhost:8000/docs")
     startup_logger.info(f"[URL] Health Check: http://localhost:8000/health")
     startup_logger.info("="*80 + "\n")
+    
+    yield
+    
+    # Shutdown cleanup task
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
+    startup_logger.info("[CLEANUP] Authentication cleanup task stopped")
+    
+    # Shutdown
+    from app.db.Database import db_manager
+    
+    shutdown_logger = get_logger("app.shutdown")
+    shutdown_logger.info("[SHUTDOWN] Scribe API shutting down...")
+    
+    # Cleanup database connections
+    try:
+        await db_manager.close()
+        shutdown_logger.info("[CLEANUP] Database connections closed")
+    except Exception as e:
+        shutdown_logger.error(f"[ERROR] Error closing database connections: {e}")
+    
+    shutdown_logger.info("[SHUTDOWN] Goodbye!")
+
+
+# Initialize FastAPI application
+fastapi_start_time = time.time()
+app = FastAPI(
+    title=settings.app_name,
+    description="A FastAPI application with strict coding standards",
+    version=settings.app_version,
+    debug=settings.debug,
+    lifespan=lifespan
+)
+log_startup_component(
+    "FastAPI Application",
+    fastapi_start_time,
+    success=True,
+    details={
+        "Title": settings.app_name,
+        "Version": settings.app_version,
+        "Debug": settings.debug
+    }
+)
+
+# Setup all middleware
+from app.core.MiddlewareSetup import setup_middleware
+setup_middleware(app)
+
+# Include routers
+router_start_time = time.time()
+app.include_router(v1_router, prefix=settings.api_v1_prefix)
+log_startup_component(
+    "API Routes",
+    router_start_time,
+    success=True,
+    details={
+        "API Prefix": settings.api_v1_prefix,
+        "Router": "v1_router"
+    }
+)
+
+# Setup exception handlers
+from app.core.ExceptionHandlers import setup_exception_handlers
+setup_exception_handlers(app)
+
+# Root endpoints
+@app.get("/", response_model=WelcomeResponse)
+async def root() -> WelcomeResponse:
+    """Welcome endpoint."""
+    return WelcomeResponse(
+        message="Welcome to Scribe API",
+        version=settings.app_version,
+        docs_url="/docs"
+    )
+
+@app.get("/health", response_model=HealthResponse)
+async def health_check() -> HealthResponse:
+    """Health check endpoint."""
+    return HealthResponse(
+        status="healthy",
+        version=settings.app_version
+    )
+
 
 
 async def initialize_database() -> None:
@@ -381,22 +261,3 @@ async def initialize_database() -> None:
             error=e
         )
         raise
-
-
-# Shutdown event handler
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Application shutdown event handler."""
-    from app.db.Database import db_manager
-    
-    shutdown_logger = get_logger("app.shutdown")
-    shutdown_logger.info("[SHUTDOWN] Scribe API shutting down...")
-    
-    # Cleanup database connections
-    try:
-        await db_manager.close()
-        shutdown_logger.info("[CLEANUP] Database connections closed")
-    except Exception as e:
-        shutdown_logger.error(f"[ERROR] Error closing database connections: {e}")
-    
-    shutdown_logger.info("[SHUTDOWN] Goodbye!")

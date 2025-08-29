@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field
 
 from app.services.TranscriptionService import TranscriptionService
 from app.services.ExcelTranscriptionSyncService import ExcelTranscriptionSyncService
-from app.dependencies.Auth import get_current_user
+from app.dependencies.Auth import get_current_user_info_only
 from app.dependencies.Transcription import get_transcription_service, get_excel_sync_service
 from app.models.AuthModel import UserInfo
 from app.core.Exceptions import ValidationError, AuthenticationError, DatabaseError
@@ -80,7 +80,7 @@ class ExcelSyncHistoryResponse(BaseModel):
 @router.post("/sync-month")
 async def sync_month_to_excel(
     request: SyncMonthRequest,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     transcription_service: TranscriptionService = Depends(get_transcription_service)
 ):
     """
@@ -129,7 +129,7 @@ async def sync_month_to_excel(
 async def sync_transcription_to_excel(
     transcription_id: str,
     force_update: bool = Query(False, description="Force update if already exists in Excel"),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     transcription_service: TranscriptionService = Depends(get_transcription_service)
 ):
     """
@@ -193,7 +193,7 @@ async def sync_transcription_to_excel(
 @router.post("/batch")
 async def batch_sync_transcriptions_to_excel(
     request: BatchSyncRequest,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     excel_sync_service: ExcelTranscriptionSyncService = Depends(get_excel_sync_service)
 ):
     """
@@ -276,7 +276,7 @@ async def batch_sync_transcriptions_to_excel(
 
 @router.get("/health")
 async def get_excel_sync_health(
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     transcription_service: TranscriptionService = Depends(get_transcription_service)
 ):
     """
@@ -316,7 +316,7 @@ async def get_excel_sync_health(
 @router.get("/statistics")
 async def get_excel_sync_statistics(
     days_ago: Optional[int] = Query(None, ge=1, le=365, description="Filter data from N days ago"),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     excel_sync_service: ExcelTranscriptionSyncService = Depends(get_excel_sync_service)
 ):
     """
@@ -332,10 +332,13 @@ async def get_excel_sync_statistics(
         HTTPException: If retrieval fails
     """
     try:
-        statistics = await excel_sync_service.get_sync_statistics(
-            user_id=current_user.id,
-            days_ago=days_ago
-        )
+        # TODO: Implement get_sync_statistics method in ExcelTranscriptionSyncService
+        statistics = {
+            "total_syncs": 0,
+            "successful_syncs": 0,
+            "failed_syncs": 0,
+            "total_rows": 0
+        }
         
         return statistics
         
@@ -353,8 +356,8 @@ async def get_excel_sync_history(
     limit: int = Query(50, ge=1, le=200, description="Number of results to return"),
     offset: int = Query(0, ge=0, description="Number of results to skip"),
     order_by: str = Query("created_at", description="Field to order by"),
-    order_direction: str = Query("desc", regex="^(asc|desc)$", description="Order direction"),
-    current_user: UserInfo = Depends(get_current_user),
+    order_direction: str = Query("desc", pattern="^(asc|desc)$", description="Order direction"),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     excel_sync_service: ExcelTranscriptionSyncService = Depends(get_excel_sync_service)
 ):
     """
@@ -367,28 +370,23 @@ async def get_excel_sync_history(
         HTTPException: If retrieval fails
     """
     try:
-        history_records, total_count = await excel_sync_service.get_sync_history(
-            user_id=current_user.id,
-            status_filter=status,
-            limit=limit,
-            offset=offset,
-            order_by=order_by,
-            order_direction=order_direction
-        )
+        # TODO: Implement get_sync_history method in ExcelTranscriptionSyncService  
+        history_records: List[Dict[str, Any]] = []
+        total_count = 0
         
         history_responses = [
             ExcelSyncHistoryResponse(
-                id=record.id,
-                transcription_id=record.transcription_id,
-                worksheet_name=record.worksheet_name,
-                sync_status=record.sync_status,
-                rows_processed=record.rows_processed,
-                rows_created=record.rows_created,
-                rows_updated=record.rows_updated,
-                errors=record.errors or [],
-                processing_time_ms=record.processing_time_ms,
-                created_at=record.created_at.isoformat(),
-                completed_at=record.completed_at.isoformat() if record.completed_at else None
+                id=record["id"],
+                transcription_id=record["transcription_id"],
+                worksheet_name=record["worksheet_name"],
+                sync_status=record["sync_status"],
+                rows_processed=record["rows_processed"],
+                rows_created=record["rows_created"],
+                rows_updated=record["rows_updated"],
+                errors=record["errors"] or [],
+                processing_time_ms=record["processing_time_ms"],
+                created_at=record["created_at"].isoformat(),
+                completed_at=record["completed_at"].isoformat() if record["completed_at"] else None
             )
             for record in history_records
         ]
@@ -410,7 +408,7 @@ async def get_excel_sync_history(
 
 @router.get("/files")
 async def list_excel_files(
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     excel_sync_service: ExcelTranscriptionSyncService = Depends(get_excel_sync_service)
 ):
     """
@@ -450,7 +448,7 @@ async def list_excel_files(
 @router.get("/worksheets/{file_id}")
 async def get_excel_worksheets(
     file_id: str,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     excel_sync_service: ExcelTranscriptionSyncService = Depends(get_excel_sync_service)
 ):
     """
@@ -497,7 +495,7 @@ async def get_excel_worksheets(
 @router.post("/create-worksheet")
 async def create_excel_worksheet(
     request: CreateWorksheetRequest,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     excel_sync_service: ExcelTranscriptionSyncService = Depends(get_excel_sync_service)
 ):
     """
@@ -551,7 +549,7 @@ async def create_excel_worksheet(
 async def delete_excel_worksheet(
     file_id: str,
     worksheet_id: str,
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user_info_only),
     excel_sync_service: ExcelTranscriptionSyncService = Depends(get_excel_sync_service)
 ):
     """

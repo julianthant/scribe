@@ -44,7 +44,7 @@ class ValidationError(ScribeBaseException):
         message: str = "Validation failed",
         field: Optional[str] = None,
         **kwargs
-    ):
+    ) -> None:
         details = kwargs.get("details", {})
         if field:
             details["field"] = field
@@ -59,7 +59,7 @@ class NotFoundError(ScribeBaseException):
         resource: str,
         identifier: Optional[str] = None,
         **kwargs
-    ):
+    ) -> None:
         message = f"{resource} not found"
         if identifier:
             message += f" with identifier: {identifier}"
@@ -77,7 +77,7 @@ class AuthenticationError(ScribeBaseException):
         self, 
         message: str = "Authentication failed",
         **kwargs
-    ):
+    ) -> None:
         super().__init__(message, error_code="AUTHENTICATION_ERROR", **kwargs)
 
 
@@ -90,7 +90,7 @@ class AuthorizationError(ScribeBaseException):
         action: Optional[str] = None,
         resource: Optional[str] = None,
         **kwargs
-    ):
+    ) -> None:
         details = kwargs.get("details", {})
         if action:
             details["action"] = action
@@ -109,7 +109,7 @@ class DuplicateError(ScribeBaseException):
         field: Optional[str] = None,
         value: Optional[str] = None,
         **kwargs
-    ):
+    ) -> None:
         message = f"{resource} already exists"
         if field and value:
             message += f" with {field}: {value}"
@@ -128,7 +128,7 @@ class DatabaseError(ScribeBaseException):
         message: str = "Database operation failed",
         operation: Optional[str] = None,
         **kwargs
-    ):
+    ) -> None:
         details = kwargs.get("details", {})
         if operation:
             details["operation"] = operation
@@ -145,7 +145,7 @@ class ExternalServiceError(ScribeBaseException):
         message: str = "External service error",
         status_code: Optional[int] = None,
         **kwargs
-    ):
+    ) -> None:
         details = kwargs.get("details", {})
         details.update({"service": service, "status_code": status_code})
         
@@ -161,7 +161,7 @@ class RateLimitError(ScribeBaseException):
         limit: Optional[int] = None,
         window: Optional[int] = None,
         **kwargs
-    ):
+    ) -> None:
         details = kwargs.get("details", {})
         details.update({"limit": limit, "window": window})
         
@@ -179,7 +179,7 @@ class MailNotFoundException(ScribeBaseException):
         message: str = "Mail resource not found",
         resource_id: Optional[str] = None,
         **kwargs
-    ):
+    ) -> None:
         if resource_id:
             message = f"{resource_type} with ID {resource_id} not found"
         else:
@@ -200,7 +200,7 @@ class MailSendException(ScribeBaseException):
         recipient: Optional[str] = None,
         subject: Optional[str] = None,
         **kwargs
-    ):
+    ) -> None:
         details = kwargs.get("details", {})
         if recipient:
             details["recipient"] = recipient
@@ -219,7 +219,7 @@ class AttachmentException(ScribeBaseException):
         attachment_id: Optional[str] = None,
         operation: Optional[str] = None,
         **kwargs
-    ):
+    ) -> None:
         details = kwargs.get("details", {})
         if attachment_id:
             details["attachment_id"] = attachment_id
@@ -239,7 +239,7 @@ class MailQuotaException(ScribeBaseException):
         current_usage: Optional[int] = None,
         limit: Optional[int] = None,
         **kwargs
-    ):
+    ) -> None:
         details = kwargs.get("details", {})
         details.update({
             "quota_type": quota_type,
