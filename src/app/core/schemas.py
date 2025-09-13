@@ -45,30 +45,3 @@ class PersistentDeletion(BaseModel):
             return deleted_at.isoformat()
 
         return None
-
-
-# -------------- token --------------
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-
-
-class TokenData(BaseModel):
-    username_or_email: str
-
-
-class TokenBlacklistBase(BaseModel):
-    token: str
-    expires_at: datetime
-
-
-class TokenBlacklistRead(TokenBlacklistBase):
-    id: int
-
-
-class TokenBlacklistCreate(TokenBlacklistBase):
-    pass
-
-
-class TokenBlacklistUpdate(TokenBlacklistBase):
-    pass

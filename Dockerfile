@@ -1,5 +1,5 @@
 # --------- Builder Stage ---------
-FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim AS builder
+FROM ghcr.io/astral-sh/uv:python:3.12-slim AS builder
 
 # Set environment variables for uv
 ENV UV_COMPILE_BYTECODE=1
@@ -21,7 +21,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-editable
 
 # --------- Final Stage ---------
-FROM python:3.11-slim-bookworm
+FROM python:3.12-slim
 
 # Create a non-root user for security
 RUN groupadd --gid 1000 app \
@@ -39,6 +39,5 @@ USER app
 # Set the working directory
 WORKDIR /code
 
-# -------- replace with comment to run with gunicorn --------
+# Run the application
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
-# CMD ["gunicorn", "app.main:app", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000"]
