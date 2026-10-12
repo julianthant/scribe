@@ -1,0 +1,67 @@
+{
+  "name": "Scribe",
+  "description": "Transcribe Gmail voicemail attachments into a Google Sheet",
+  "repository": "https://github.com/julianthant/scribe",
+  "stack": "heroku-24",
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  },
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ],
+  "env": {
+    "MAILBOX_ADDRESS": {
+      "description": "Gmail inbox that receives forwarded voicemail.",
+      "value": "scribe.smc@gmail.com"
+    },
+    "GOOGLE_CLIENT_ID": {
+      "description": "OAuth desktop client id from the Cloud project.",
+      "required": true
+    },
+    "GOOGLE_CLIENT_SECRET": {
+      "description": "OAuth desktop client secret. Do not commit it.",
+      "required": true
+    },
+    "GOOGLE_REFRESH_TOKEN": {
+      "description": "Refresh token printed by scribe-login on a laptop. Do not commit it.",
+      "required": true
+    },
+    "GOOGLE_SHEET_ID": {
+      "description": "Spreadsheet id from the sheet URL, the segment after /d/.",
+      "required": true
+    },
+    "GOOGLE_SHEET_TAB": {
+      "description": "Sheet tab name. A single token with no spaces.",
+      "value": "Sheet1"
+    },
+    "GMAIL_LABEL": {
+      "description": "Label applied after a message is written or permanently skipped.",
+      "value": "scribe/processed"
+    },
+    "GROQ_API_KEY": {
+      "description": "Groq API key used for whisper-large-v3-turbo.",
+      "required": true
+    },
+    "GROQ_MODEL": {
+      "description": "Groq transcription model.",
+      "value": "whisper-large-v3-turbo"
+    },
+    "WEBHOOK_SECRET": {
+      "description": "HMAC secret shared with Apps Script. Copy it with heroku config:get WEBHOOK_SECRET.",
+      "generator": "secret"
+    },
+    "LOCAL_WHISPER_ENABLED": {
+      "description": "Leave false on a Basic dyno. The local extra is not installed on Heroku.",
+      "value": "false"
+    },
+    "LOG_LEVEL": {
+      "description": "Python log level.",
+      "value": "INFO"
+    }
+  }
+}

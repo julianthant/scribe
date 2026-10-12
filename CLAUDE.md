@@ -1,100 +1,34 @@
-# CLAUDE.md
+# Scribe
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+FastAPI service that transcribes voicemail audio delivered to a free Gmail inbox and appends a row to a Google Sheet. It runs as one Heroku Basic web dyno.
 
-## Project Overview
+An Apps Script in `apps-script/` runs every minute in that Gmail account and POSTs new message ids to `POST /gmail/notifications` with an HMAC signature. The app fetches the audio with the Gmail API, transcribes it, appends the sheet, and applies the `scribe/processed` label. APScheduler polls every 15 minutes inside the same web process.
 
-This is a FastAPI boilerplate built for async operations with SQLAlchemy, Pydantic 2, and comprehensive enterprise features. The project uses uv for dependency management and follows a modular architecture pattern.
+The sheet `message_id` column is the durable dedup record. Attempt counts are in memory and reset on dyno restart. `GOOGLE_REFRESH_TOKEN` is a Heroku config var. Access tokens stay in memory. `LOCAL_WHISPER_ENABLED` defaults to false because a Basic dyno has 512 MB and the Heroku build does not install optional extras.
 
-## Common Development Commands
+## Commands
 
-### Setup
 ```bash
-uv sync                     # Install dependencies
-source .venv/bin/activate   # Activate virtual environment (or use uv run)
+uv sync --extra dev
+uv run pytest
+uv run ruff check
+uv run ruff format
+uv run scribe-login
+uv run python -m app.poll
+uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-### Running the Application
-```bash
-# Development mode
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+Heroku runs `web: uvicorn app.main:app --host 0.0.0.0 --port $PORT` from the `Procfile`.
 
-# With Docker
-docker-compose up web
+## Layout
 
-# Background worker
-arq app.core.worker.settings.WorkerSettings
-```
+- `src/app/main.py` — app, `/health`, and lifespan
+- `src/app/auth/` — installed-app OAuth login; the CLI prints the refresh token for `heroku config:set`
+- `src/app/api/webhook.py` — HMAC check and fast 202
+- `src/app/google/` — Gmail and Sheets calls as the signed-in user
+- `src/app/pipeline/` — transcription, sheet rows, in-memory attempt counts, reconcile
+- `src/app/services/runner.py` — worker queue and APScheduler poll
+- `apps-script/` — one-minute Gmail notifier
+- `Procfile`, `app.json`, `.python-version` — Heroku Basic web dyno
 
-### Testing
-```bash
-uv run pytest              # Run all tests
-uv run pytest tests/test_user.py  # Run specific test file
-```
-
-### Code Quality
-```bash
-# Linting and formatting
-ruff check --fix           # Fix linting issues
-ruff format                # Format code
-mypy src                   # Type checking
-
-# Pre-commit hooks
-pre-commit install          # Set up hooks
-pre-commit run --all-files  # Run all hooks manually
-```
-
-### Database Operations
-```bash
-# Migrations are handled automatically on startup
-# Manual migration commands available via alembic in src/
-```
-
-## Architecture Overview
-
-### Core Structure
-- **src/app/main.py**: Application entry point with lifespan management
-- **src/app/core/**: Core functionality (config, database, security, utilities)
-- **src/app/api/**: API layer with versioned endpoints (v1)
-- **src/app/models/**: SQLAlchemy models with mixins (UUID, Timestamp, SoftDelete)
-- **src/app/schemas/**: Pydantic schemas for request/response validation
-- **src/app/crud/**: Database operations using FastCRUD
-- **src/app/admin/**: CRUDAdmin interface for database management
-
-### Key Components
-- **Configuration**: Environment-based settings in `src/app/core/config.py` with multiple setting classes
-- **Database**: Async PostgreSQL with SQLAlchemy 2.0, automatic table creation on startup
-- **Authentication**: JWT-based with access/refresh tokens, role-based permissions
-- **Caching**: Redis integration for caching, rate limiting, and session management
-- **Background Tasks**: ARQ for async task processing with Redis backend
-- **Admin Panel**: CRUDAdmin mounted at `/admin` (configurable) for database management
-
-### API Structure
-All endpoints are versioned under `/api/v1/`:
-- `/api/v1/login` - Authentication
-- `/api/v1/users` - User management
-- `/api/v1/posts` - Post operations
-- `/api/v1/tasks` - Background task management
-- `/api/v1/tiers` - Tier/subscription management
-- `/api/v1/rate_limits` - Rate limiting configuration
-
-### Environment Configuration
-The application supports multiple environments (LOCAL, STAGING, PRODUCTION) with:
-- Environment-specific documentation access controls
-- Configurable admin panel settings
-- Multiple database configurations (PostgreSQL, MySQL, SQLite)
-- Redis configuration for caching, queuing, and rate limiting
-
-### Development Patterns
-- All models inherit from mixins (UUIDMixin, TimestampMixin, SoftDeleteMixin)
-- Use FastCRUD for standardized CRUD operations
-- Async/await throughout the application
-- Type hints enforced with mypy
-- Environment variables loaded from `src/.env`
-- Pre-commit hooks enforce code quality standards
-
-### Docker Setup
-- Multi-service setup with web, worker, database, and Redis
-- Volume mounts for development with hot reload
-- Optional services: pgAdmin, nginx
-- Automatic superuser creation via `create_superuser` service
+Configuration is environment variables. See `.env.example`. Do not log transcripts, refresh tokens, or the webhook secret. Do not enable Google Cloud billing. Do not add a second web dyno.
