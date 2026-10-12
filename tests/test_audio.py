@@ -1,9 +1,9 @@
 from pathlib import Path
 
 import pytest
-from tests.helpers import wav_bytes
 
 from app.pipeline.audio import duration_seconds, is_audio, prepare_for_groq
+from tests.helpers import wav_bytes
 
 
 def test_is_audio_matches_extension_or_type():
