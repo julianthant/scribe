@@ -1,6 +1,8 @@
 # Scribe
 
-FastAPI service that transcribes voicemail audio delivered to the personal Outlook.com mailbox `smc.scribe@outlook.com` and appends a row to an OneDrive workbook.
+FastAPI service that transcribes voicemail audio delivered to a free Gmail inbox and appends a row to a Google Sheet.
+
+An Apps Script in `apps-script/` runs every minute in that Gmail account and POSTs new message ids to `POST /gmail/notifications` with an HMAC signature. The app fetches the audio with the Gmail API, transcribes it, appends the sheet, and applies the `scribe/processed` label. A poll every 15 minutes catches anything the script missed.
 
 ## Commands
 
@@ -17,10 +19,11 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 ## Layout
 
 - `src/app/main.py` — app, `/health`, and lifespan
-- `src/app/auth/` — MSAL device-code login and the mode-600 token cache
-- `src/app/api/webhook.py` — Graph validation and notification ack
-- `src/app/graph/client.py` — delegated Graph calls as `/me`
-- `src/app/pipeline/` — transcription, workbook, SQLite dedup, reconcile, subscription renewal
+- `src/app/auth/` — installed-app OAuth login and the mode-600 token file
+- `src/app/api/webhook.py` — HMAC check and fast 202
+- `src/app/google/` — Gmail and Sheets calls as the signed-in user
+- `src/app/pipeline/` — transcription, sheet rows, SQLite dedup, reconcile
+- `apps-script/` — one-minute Gmail notifier
 - `deploy/` — Compose entrypoint, Caddyfile, systemd unit
 
-Configuration is environment variables. See `.env.example`. Personal Outlook.com uses the `consumers` authority and delegated `Mail.Read` plus `Files.ReadWrite`. Do not log transcripts or tokens.
+Configuration is environment variables. See `.env.example`. Do not log transcripts, refresh tokens, or the webhook secret. Do not enable Google Cloud billing.

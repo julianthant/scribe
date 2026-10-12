@@ -8,7 +8,7 @@ import httpx
 from app.auth.provider import TokenProvider
 from app.core.config import load_settings, require_runtime
 from app.core.logging import configure_logging
-from app.graph.client import GraphClient
+from app.google.client import GoogleClient
 from app.pipeline.reconcile import reconcile
 from app.pipeline.state import StateStore
 
@@ -21,9 +21,9 @@ async def run_once() -> int:
     configure_logging(settings.LOG_LEVEL)
     state = StateStore(settings.STATE_DB_PATH)
     async with httpx.AsyncClient(timeout=60) as http:
-        graph = GraphClient(TokenProvider(settings), http)
+        mail = GoogleClient(TokenProvider(settings), http, settings)
         lock = asyncio.Lock()
-        count = await reconcile(graph, state, settings, lock)
+        count = await reconcile(mail, state, settings, lock)
     logger.info("poll finished newly_done=%s", count)
     return count
 

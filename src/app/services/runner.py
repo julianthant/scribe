@@ -7,11 +7,10 @@ from fastapi import FastAPI
 
 from app.auth.provider import AuthError, TokenProvider
 from app.core.config import Settings
-from app.graph.client import GraphClient
+from app.google.client import GoogleClient
 from app.pipeline.process import process_message
 from app.pipeline.reconcile import reconcile
 from app.pipeline.state import StateStore
-from app.pipeline.subscription import ensure_subscription
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +22,7 @@ def install_runtime(app: FastAPI, settings: Settings) -> None:
     app.state.process_lock = asyncio.Lock()
     app.state.state_store = StateStore(settings.STATE_DB_PATH)
     app.state.http = None
-    app.state.graph = None
+    app.state.mail = None
 
     async def enqueue(message_id: str) -> None:
         if message_id in app.state.queued:
@@ -46,13 +45,12 @@ async def lifespan(app: FastAPI):
         return
     http = httpx.AsyncClient(timeout=60)
     tokens = TokenProvider(settings)
-    graph = GraphClient(tokens, http)
+    mail = GoogleClient(tokens, http, settings)
     app.state.http = http
-    app.state.graph = graph
+    app.state.mail = mail
     tasks = [
-        asyncio.create_task(_worker(app, graph), name="scribe-worker"),
-        asyncio.create_task(_subscription_loop(app, graph), name="scribe-subscription"),
-        asyncio.create_task(_reconcile_loop(app, graph), name="scribe-reconcile"),
+        asyncio.create_task(_worker(app, mail), name="scribe-worker"),
+        asyncio.create_task(_reconcile_loop(app, mail), name="scribe-reconcile"),
     ]
     logger.info("scribe started for %s", settings.MAILBOX_ADDRESS)
     try:
@@ -64,13 +62,13 @@ async def lifespan(app: FastAPI):
         await http.aclose()
 
 
-async def _worker(app: FastAPI, graph: GraphClient) -> None:
+async def _worker(app: FastAPI, mail: GoogleClient) -> None:
     while True:
         message_id = await app.state.queue.get()
         try:
             await process_message(
                 message_id,
-                graph=graph,
+                mail=mail,
                 state=app.state.state_store,
                 settings=app.state.settings,
                 lock=app.state.process_lock,
@@ -82,27 +80,11 @@ async def _worker(app: FastAPI, graph: GraphClient) -> None:
             app.state.queue.task_done()
 
 
-async def _subscription_loop(app: FastAPI, graph: GraphClient) -> None:
+async def _reconcile_loop(app: FastAPI, mail: GoogleClient) -> None:
     settings: Settings = app.state.settings
     while True:
         try:
-            await ensure_subscription(graph, app.state.state_store, settings)
-            await asyncio.sleep(settings.SUBSCRIPTION_RENEW_INTERVAL_SECONDS)
-        except asyncio.CancelledError:
-            raise
-        except AuthError:
-            logger.error("subscription skipped; run scribe-login as %s", settings.MAILBOX_ADDRESS)
-            await asyncio.sleep(300)
-        except Exception:
-            logger.exception("subscription renew failed")
-            await asyncio.sleep(300)
-
-
-async def _reconcile_loop(app: FastAPI, graph: GraphClient) -> None:
-    settings: Settings = app.state.settings
-    while True:
-        try:
-            await reconcile(graph, app.state.state_store, settings, app.state.process_lock)
+            await reconcile(mail, app.state.state_store, settings, app.state.process_lock)
         except asyncio.CancelledError:
             raise
         except AuthError:

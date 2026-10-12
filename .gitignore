@@ -137,6 +137,7 @@ cython_debug/
 # Scribe runtime state
 data/
 token_cache.json
+google_token.json
 *.sqlite
 *.sqlite-journal
 *.db-journal

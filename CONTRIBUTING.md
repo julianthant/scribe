@@ -9,4 +9,4 @@ uv run ruff format
 uv run pytest
 ```
 
-Do not commit `.env`, `data/token_cache.json`, or transcription logs. Tests mock Microsoft Graph and Groq.
+Do not commit `.env`, `data/google_token.json`, or transcription logs. Tests mock Gmail, Sheets, and Groq.

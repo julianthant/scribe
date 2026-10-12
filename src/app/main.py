@@ -12,7 +12,7 @@ def create_app(*, start_background: bool = True) -> FastAPI:
     if start_background:
         require_server(settings)
     configure_logging(settings.LOG_LEVEL)
-    application = FastAPI(title="Scribe", version="0.2.0", lifespan=lifespan)
+    application = FastAPI(title="Scribe", version="0.3.0", lifespan=lifespan)
     application.state.start_background = start_background
     install_runtime(application, settings)
     application.include_router(router)

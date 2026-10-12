@@ -1,75 +1,55 @@
+import hashlib
+import hmac
+import json
 import logging
 import re
-from collections.abc import Awaitable, Callable
 
 from fastapi import APIRouter, Request
-from fastapi.responses import PlainTextResponse, Response
+from fastapi.responses import Response
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Graph resource examples:
-#   Users/{user-id}/Messages/{message-id}
-#   me/messages('{message-id}')
-_RESOURCE_ID = re.compile(r"messages(?:\('([^']+)'\)|/([^/?]+))", re.IGNORECASE)
-
-Enqueue = Callable[[str], Awaitable[None]]
+_MESSAGE_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+_MAX_BODY = 4096
 
 
-def notification_message_ids(payload: dict, client_state: str) -> list[str]:
-    values = payload.get("value")
-    if not isinstance(values, list):
-        return []
-    ids: list[str] = []
-    for item in values:
-        if not isinstance(item, dict):
-            continue
-        if item.get("clientState") != client_state:
-            logger.warning("notification rejected because clientState did not match")
-            continue
-        message_id = _message_id(item)
-        if message_id:
-            ids.append(message_id)
-    return ids
+def signature_matches(secret: str, body: bytes, header: str | None) -> bool:
+    if not header:
+        return False
+    provided = header.removeprefix("sha256=").strip()
+    expected = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, provided)
 
 
-def _message_id(item: dict) -> str | None:
-    resource_data = item.get("resourceData")
-    if isinstance(resource_data, dict):
-        message_id = resource_data.get("id")
-        if isinstance(message_id, str) and message_id:
-            return message_id
-    resource = item.get("resource")
-    if not isinstance(resource, str):
-        return None
-    found = list(_RESOURCE_ID.finditer(resource))
-    if not found:
-        return None
-    match = found[-1]
-    message_id = match.group(1) or match.group(2)
-    if message_id:
-        return message_id
-    return None
-
-
-@router.api_route("/graph/notifications", methods=["GET", "POST"])
+@router.post("/gmail/notifications")
 async def notifications(request: Request) -> Response:
-    """Graph validation must be answered immediately. Delivery is acked before work."""
-    token = request.query_params.get("validationToken")
-    if token is not None:
-        return PlainTextResponse(token, status_code=200, media_type="text/plain")
-    if request.method == "GET":
-        return Response(status_code=200)
-    try:
-        payload = await request.json()
-    except Exception:
-        logger.info("notification body was not json")
-        return Response(status_code=202)
-    if not isinstance(payload, dict):
-        return Response(status_code=202)
+    """Ack a signed Apps Script ping before any Gmail or transcription work."""
+    body = await request.body()
+    if len(body) > _MAX_BODY:
+        return Response(status_code=413)
     settings = request.app.state.settings
-    enqueue: Enqueue = request.app.state.enqueue
-    for message_id in notification_message_ids(payload, settings.GRAPH_CLIENT_STATE):
-        await enqueue(message_id)
+    header = request.headers.get("x-scribe-signature")
+    if not signature_matches(settings.WEBHOOK_SECRET, body, header):
+        logger.warning("notification rejected because the signature did not match")
+        return Response(status_code=401)
+    message_id = _message_id(body)
+    if message_id is None:
+        logger.info("notification ignored")
+        return Response(status_code=202)
+    await request.app.state.enqueue(message_id)
     return Response(status_code=202)
+
+
+def _message_id(body: bytes) -> str | None:
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    message_id = payload.get("message_id")
+    if not isinstance(message_id, str) or _MESSAGE_ID.fullmatch(message_id) is None:
+        return None
+    return message_id

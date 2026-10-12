@@ -3,7 +3,7 @@ services:
     build: .
     env_file: .env
     environment:
-      TOKEN_CACHE_PATH: /data/token_cache.json
+      GOOGLE_TOKEN_PATH: /data/google_token.json
       STATE_DB_PATH: /data/scribe.db
       WHISPER_MODEL_DIR: /data/models
     volumes:

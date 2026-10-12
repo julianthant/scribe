@@ -1,3 +1,3 @@
-"""Scribe transcribes voicemail attachments from an Outlook.com mailbox."""
+"""Scribe transcribes voicemail attachments from a Gmail inbox."""
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"

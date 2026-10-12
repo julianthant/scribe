@@ -1,15 +1,14 @@
 import logging
 
-from msal import SerializableTokenCache
-
-from app.auth.cache import save_cache
+from app.auth.tokenstore import save_token
 from app.core.logging import RedactFilter
 
 
-def test_token_cache_is_mode_600(tmp_path):
-    path = tmp_path / "nested" / "token_cache.json"
-    save_cache(path, SerializableTokenCache())
+def test_token_file_is_mode_600(tmp_path):
+    path = tmp_path / "nested" / "google_token.json"
+    save_token(path, {"refresh_token": "stored-secret", "access_token": "ya29.secret"})
     assert path.stat().st_mode & 0o777 == 0o600
+    assert "stored-secret" in path.read_text(encoding="utf-8")
 
 
 def test_redact_filter_hides_bearer_tokens():

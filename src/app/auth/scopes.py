@@ -1,10 +1,10 @@
-"""Delegated Graph scopes for the signed-in Outlook.com account.
+"""OAuth scopes for the Gmail account that receives forwarded voicemail.
 
-MSAL adds offline_access, openid, and profile itself. Passing those reserved
-scopes to the library raises an error, so they stay out of this list.
+gmail.modify reads messages and applies the scribe/processed label.
+spreadsheets reads and appends the transcript sheet.
 """
 
 SCOPES = [
-    "https://graph.microsoft.com/Mail.Read",
-    "https://graph.microsoft.com/Files.ReadWrite",
+    "https://www.googleapis.com/auth/gmail.modify",
+    "https://www.googleapis.com/auth/spreadsheets",
 ]

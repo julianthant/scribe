@@ -17,12 +17,13 @@ def wav_bytes(seconds: float = 1.0, rate: int = 8000) -> bytes:
 
 def settings_for(tmp_path: Path, **overrides: object) -> Settings:
     values: dict[str, object] = {
-        "MS_CLIENT_ID": "client",
-        "MAILBOX_ADDRESS": "smc.scribe@outlook.com",
+        "GOOGLE_CLIENT_ID": "test-client-id.apps.googleusercontent.com",
+        "GOOGLE_CLIENT_SECRET": "test-client-secret",
+        "MAILBOX_ADDRESS": "you@gmail.com",
         "GROQ_API_KEY": "gsk-should-not-appear-in-logs",
-        "GRAPH_WEBHOOK_URL": "https://scribe.example.com/graph/notifications",
-        "GRAPH_CLIENT_STATE": "a" * 32,
-        "TOKEN_CACHE_PATH": tmp_path / "token_cache.json",
+        "WEBHOOK_SECRET": "a" * 32,
+        "GOOGLE_SHEET_ID": "sheetid0123456789",
+        "GOOGLE_TOKEN_PATH": tmp_path / "google_token.json",
         "STATE_DB_PATH": tmp_path / "scribe.db",
         "WHISPER_MODEL_DIR": tmp_path / "models",
         "LOCAL_WHISPER_ENABLED": False,

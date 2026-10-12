@@ -1,36 +1,29 @@
 import asyncio
+import hashlib
+import hmac
+import json
 
 from fastapi.testclient import TestClient
 
-from app.api.webhook import notification_message_ids
+from app.api.webhook import signature_matches
 from app.main import create_app
 
-CLIENT_STATE = "client-state-secret-value"
+SECRET = "client-state-secret-value"
 
 
 def _app():
     application = create_app(start_background=False)
-    application.state.settings.GRAPH_CLIENT_STATE = CLIENT_STATE
+    application.state.settings.WEBHOOK_SECRET = SECRET
     return application
 
 
-def test_validation_token_is_plain_text_and_does_no_work():
-    application = _app()
-    called: list[str] = []
-
-    async def enqueue(message_id: str) -> None:
-        called.append(message_id)
-
-    application.state.enqueue = enqueue
-    with TestClient(application) as client:
-        response = client.post("/graph/notifications?validationToken=plain%20token")
-    assert response.status_code == 200
-    assert response.text == "plain token"
-    assert response.headers["content-type"].startswith("text/plain")
-    assert called == []
+def _signed(payload: dict) -> tuple[bytes, str]:
+    body = json.dumps(payload, separators=(",", ":")).encode()
+    digest = hmac.new(SECRET.encode(), body, hashlib.sha256).hexdigest()
+    return body, digest
 
 
-def test_mismatched_client_state_is_not_queued():
+def test_valid_signature_enqueues_the_message_id():
     application = _app()
     queued: list[str] = []
 
@@ -38,28 +31,55 @@ def test_mismatched_client_state_is_not_queued():
         queued.append(message_id)
 
     application.state.enqueue = enqueue
-    payload = {
-        "value": [
-            {"clientState": "wrong-state-value!!", "resourceData": {"id": "hidden"}},
-            {"clientState": CLIENT_STATE, "resource": "Users/user/Messages/AAMkPath"},
-            {"clientState": CLIENT_STATE, "resourceData": {"id": "AAMkData"}},
-        ]
-    }
-    with TestClient(application) as client:
-        response = client.post("/graph/notifications", json=payload)
-    assert response.status_code == 202
-    assert queued == ["AAMkPath", "AAMkData"]
-
-
-def test_bad_json_is_still_acked():
-    application = _app()
+    body, digest = _signed({"message_id": "18f4abc"})
     with TestClient(application) as client:
         response = client.post(
-            "/graph/notifications",
-            content=b"not-json",
-            headers={"content-type": "application/json"},
+            "/gmail/notifications",
+            content=body,
+            headers={"content-type": "application/json", "X-Scribe-Signature": digest},
         )
     assert response.status_code == 202
+    assert queued == ["18f4abc"]
+
+
+def test_bad_signature_is_rejected_and_not_queued():
+    application = _app()
+    queued: list[str] = []
+
+    async def enqueue(message_id: str) -> None:
+        queued.append(message_id)
+
+    application.state.enqueue = enqueue
+    body, _digest = _signed({"message_id": "18f4abc"})
+    with TestClient(application) as client:
+        response = client.post(
+            "/gmail/notifications",
+            content=body,
+            headers={"content-type": "application/json", "X-Scribe-Signature": "0" * 64},
+        )
+    assert response.status_code == 401
+    assert queued == []
+
+
+def test_signed_garbage_is_acked_without_enqueue():
+    application = _app()
+    queued: list[str] = []
+
+    async def enqueue(message_id: str) -> None:
+        queued.append(message_id)
+
+    application.state.enqueue = enqueue
+    body = b"not-json"
+    digest = hmac.new(SECRET.encode(), body, hashlib.sha256).hexdigest()
+    with TestClient(application) as client:
+        response = client.post(
+            "/gmail/notifications",
+            content=body,
+            headers={"X-Scribe-Signature": f"sha256={digest}"},
+        )
+    assert response.status_code == 202
+    assert queued == []
+    assert signature_matches(SECRET, body, f"sha256={digest}")
 
 
 def test_health_names_the_mailbox():
@@ -67,18 +87,7 @@ def test_health_names_the_mailbox():
     with TestClient(application) as client:
         response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "mailbox": "smc.scribe@outlook.com"}
-
-
-def test_notification_parser_reads_both_resource_shapes():
-    payload = {
-        "value": [
-            {"clientState": "c", "resource": "me/messages('AAMkQuoted')"},
-            {"clientState": "c", "resourceData": {"id": "AAMkData"}},
-            {"clientState": "other", "resourceData": {"id": "hidden"}},
-        ]
-    }
-    assert notification_message_ids(payload, "c") == ["AAMkQuoted", "AAMkData"]
+    assert response.json() == {"status": "ok", "mailbox": "you@gmail.com"}
 
 
 async def test_full_queue_drops_the_id_for_reconcile():

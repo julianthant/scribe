@@ -1,7 +1,10 @@
+import re
 from pathlib import Path
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_SHEET_ID = re.compile(r"[A-Za-z0-9_-]{10,}")
 
 
 class Settings(BaseSettings):
@@ -13,14 +16,17 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    MS_CLIENT_ID: str = Field(min_length=1)
-    MS_AUTHORITY: str = "https://login.microsoftonline.com/consumers"
-    MAILBOX_ADDRESS: str = "smc.scribe@outlook.com"
-    GRAPH_WEBHOOK_URL: str = ""
-    GRAPH_CLIENT_STATE: str = ""
-    TOKEN_CACHE_PATH: Path = Path("data/token_cache.json")
+    GOOGLE_CLIENT_ID: str = Field(min_length=1)
+    GOOGLE_CLIENT_SECRET: str = ""
+    MAILBOX_ADDRESS: str = ""
+    WEBHOOK_SECRET: str = ""
+    GOOGLE_SHEET_ID: str = ""
+    GOOGLE_SHEET_TAB: str = "Sheet1"
+    GMAIL_LABEL: str = "scribe/processed"
+    GOOGLE_TOKEN_PATH: Path = Path("data/google_token.json")
     STATE_DB_PATH: Path = Path("data/scribe.db")
-    ONEDRIVE_XLSX_PATH: str = "Scribe/voicemails.xlsx"
+    SCRIBE_OAUTH_HOST: str = "127.0.0.1"
+    SCRIBE_OAUTH_PORT: int = 8765
     GROQ_API_KEY: str = ""
     GROQ_MODEL: str = "whisper-large-v3-turbo"
     LOCAL_WHISPER_ENABLED: bool = True
@@ -28,30 +34,42 @@ class Settings(BaseSettings):
     WHISPER_MODEL_DIR: Path = Path("data/models")
     RECONCILE_INTERVAL_SECONDS: int = 900
     RECONCILE_LOOKBACK_HOURS: int = 48
-    SUBSCRIPTION_RENEW_INTERVAL_SECONDS: int = 86400
-    SUBSCRIPTION_LIFETIME_DAYS: int = 6
     MAX_ATTEMPTS: int = 5
     RETRY_BACKOFF_SECONDS: float = 2
     LOG_LEVEL: str = "INFO"
 
-    @field_validator("MS_AUTHORITY")
+    @field_validator("MAILBOX_ADDRESS")
     @classmethod
-    def authority_is_consumers(cls, value: str) -> str:
-        if not value.startswith("https://login.microsoftonline.com/"):
-            raise ValueError("MS_AUTHORITY must be a login.microsoftonline.com URL")
-        return value.rstrip("/")
-
-    @field_validator("ONEDRIVE_XLSX_PATH")
-    @classmethod
-    def workbook_path(cls, value: str) -> str:
-        cleaned = value.strip().lstrip("/")
-        if not cleaned.lower().endswith(".xlsx"):
-            raise ValueError("ONEDRIVE_XLSX_PATH must end with .xlsx")
-        if ".." in cleaned.split("/"):
-            raise ValueError("ONEDRIVE_XLSX_PATH must not contain '..'")
+    def mailbox(cls, value: str) -> str:
+        cleaned = value.strip()
+        if cleaned and "@" not in cleaned:
+            raise ValueError("MAILBOX_ADDRESS must be the Gmail address that receives voicemail")
         return cleaned
 
-    @field_validator("RECONCILE_INTERVAL_SECONDS", "SUBSCRIPTION_RENEW_INTERVAL_SECONDS")
+    @field_validator("GOOGLE_SHEET_ID")
+    @classmethod
+    def sheet_id(cls, value: str) -> str:
+        cleaned = value.strip()
+        if cleaned and _SHEET_ID.fullmatch(cleaned) is None:
+            raise ValueError("GOOGLE_SHEET_ID must be the id from the sheet URL")
+        return cleaned
+
+    @field_validator("GOOGLE_SHEET_TAB", "GMAIL_LABEL")
+    @classmethod
+    def plain_name(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned or any(char in cleaned for char in "\r\n\"'! "):
+            raise ValueError("name must be a single token without quotes")
+        return cleaned
+
+    @field_validator("SCRIBE_OAUTH_HOST")
+    @classmethod
+    def oauth_host(cls, value: str) -> str:
+        if value not in {"127.0.0.1", "0.0.0.0"}:
+            raise ValueError("SCRIBE_OAUTH_HOST must be 127.0.0.1 or 0.0.0.0")
+        return value
+
+    @field_validator("RECONCILE_INTERVAL_SECONDS")
     @classmethod
     def positive_interval(cls, value: int) -> int:
         if value < 60:
@@ -86,9 +104,16 @@ def load_settings() -> Settings:
 
 
 def _runtime_problems(settings: Settings) -> list[str]:
+    missing: list[str] = []
     if not settings.GROQ_API_KEY:
-        return ["GROQ_API_KEY is required"]
-    return []
+        missing.append("GROQ_API_KEY is required")
+    if not settings.GOOGLE_CLIENT_SECRET:
+        missing.append("GOOGLE_CLIENT_SECRET is required")
+    if not settings.MAILBOX_ADDRESS:
+        missing.append("MAILBOX_ADDRESS is required")
+    if not settings.GOOGLE_SHEET_ID:
+        missing.append("GOOGLE_SHEET_ID is required")
+    return missing
 
 
 def require_runtime(settings: Settings) -> None:
@@ -99,11 +124,7 @@ def require_runtime(settings: Settings) -> None:
 
 def require_server(settings: Settings) -> None:
     missing = _runtime_problems(settings)
-    if not settings.GRAPH_WEBHOOK_URL.startswith("https://"):
-        missing.append("GRAPH_WEBHOOK_URL must be an https URL that Microsoft Graph can reach")
-    if not settings.GRAPH_WEBHOOK_URL.rstrip("/").endswith("/graph/notifications"):
-        missing.append("GRAPH_WEBHOOK_URL must end with /graph/notifications")
-    if not 16 <= len(settings.GRAPH_CLIENT_STATE) <= 128:
-        missing.append("GRAPH_CLIENT_STATE must be 16 to 128 characters")
+    if not 16 <= len(settings.WEBHOOK_SECRET) <= 128:
+        missing.append("WEBHOOK_SECRET must be 16 to 128 characters")
     if missing:
         raise ConfigError("Configuration error:\n  " + "\n  ".join(missing))

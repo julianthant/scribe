@@ -17,23 +17,24 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - name: Poll the mailbox once
         env:
-          MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_TOKEN_B64: ${{ secrets.GOOGLE_TOKEN_B64 }}
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          TOKEN_CACHE_B64: ${{ secrets.TOKEN_CACHE_B64 }}
-          MAILBOX_ADDRESS: smc.scribe@outlook.com
-          TOKEN_CACHE_PATH: /tmp/token_cache.json
+          MAILBOX_ADDRESS: ${{ secrets.MAILBOX_ADDRESS }}
+          GOOGLE_TOKEN_PATH: /tmp/google_token.json
           STATE_DB_PATH: /tmp/scribe.db
           LOCAL_WHISPER_ENABLED: "false"
-          ONEDRIVE_XLSX_PATH: Scribe/voicemails.xlsx
         run: |
           umask 077
-          trap 'rm -f /tmp/token_cache.json' EXIT
-          printf '%s' "$TOKEN_CACHE_B64" | base64 -d > /tmp/token_cache.json
-          chmod 600 /tmp/token_cache.json
-          before=$(sha256sum /tmp/token_cache.json | awk '{print $1}')
+          trap 'rm -f /tmp/google_token.json' EXIT
+          printf '%s' "$GOOGLE_TOKEN_B64" | base64 -d > /tmp/google_token.json
+          chmod 600 /tmp/google_token.json
+          before=$(sha256sum /tmp/google_token.json | awk '{print $1}')
           uv sync --locked --extra dev
           uv run python -m app.poll
-          after=$(sha256sum /tmp/token_cache.json | awk '{print $1}')
+          after=$(sha256sum /tmp/google_token.json | awk '{print $1}')
           if [ "$before" != "$after" ]; then
-            echo "::warning title=Token cache rotated::Update TOKEN_CACHE_B64 from the new cache. Actions cannot write secrets. If the VM is also running, keep one cache as the source of truth."
+            echo "::warning title=Token file changed::Update GOOGLE_TOKEN_B64 from the new file. Actions cannot write secrets. If the VM is also running, keep one token file as the source of truth."
           fi

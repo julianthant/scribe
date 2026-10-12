@@ -1,69 +1,73 @@
 # Scribe
 
-Scribe watches the personal Outlook.com mailbox `smc.scribe@outlook.com`. When a message with an `.mp3` or `.wav` attachment arrives, it transcribes the audio and appends one row to an Excel workbook on that account's OneDrive.
+Scribe transcribes voicemail audio that lands in a free Gmail inbox and appends one row per message to a Google Sheet owned by that same account.
 
-The service runs on an always-on free VM so Microsoft Graph can deliver webhooks. A poll every 15 minutes catches anything the webhook missed. An optional GitHub Actions job can run the same poll when the VM is down.
+A Google Apps Script in that inbox runs every minute. It finds messages with `.mp3` or `.wav` attachments that are not labeled `scribe/processed`, and POSTs the Gmail message id to the FastAPI app on an Oracle Cloud Always Free VM. The POST is signed with HMAC-SHA256 and a shared secret. The app answers `202` immediately, then fetches the message with the Gmail API, transcribes the audio, appends the sheet, and applies the label.
 
-Transcription uses Groq's free `whisper-large-v3-turbo` model. If Groq returns an error or a rate limit, the VM falls back to local `faster-whisper` (`small`, CPU, int8). Files over 24 MB are re-encoded with ffmpeg and split before upload.
+A poll every 15 minutes on the VM catches anything the script missed. Dedup is the sheet's message-id column plus a small SQLite file. Groq's free `whisper-large-v3-turbo` model does the transcription. If Groq returns an error, the VM falls back to local `faster-whisper` (`small`, CPU, int8).
+
+Nothing in this setup needs a Google Cloud billing account. Do not enable Pub/Sub, and do not link a billing account when the console offers one.
+
+`MAILBOX_ADDRESS` is `scribe.smc@gmail.com`. That is the free Gmail inbox that receives forwarded voicemail. Sign in as that account for the Cloud project, the sheet, Apps Script, and `scribe-login`.
 
 ## What you need
 
-- A free Outlook.com account. This project uses `smc.scribe@outlook.com`.
-- An Entra app registration for personal Microsoft accounts, with no client secret.
+- The Gmail account `scribe.smc@gmail.com`.
+- A Google Cloud project with the Gmail API and Google Sheets API enabled, an OAuth desktop client, and the consent screen published to **Production**. No billing account.
+- A blank Google Sheet in that Gmail account.
 - A free Groq API key.
-- An Oracle Cloud Always Free Ampere VM (or the GitHub Actions poll alone, if no VM capacity is available).
-- A DNS name pointing at that VM, so Graph can reach `https://<domain>/graph/notifications`.
+- An Oracle Cloud Always Free Ampere VM and a DNS name for `https://<domain>/gmail/notifications`.
 
-Graph must get an HTTP response in about 3 seconds, and it validates the webhook URL in about 10 seconds. Hosts that sleep when idle (Render, and Koyeb after an hour) miss that window. Fly.io's trial is not an ongoing free tier. Oracle's Always Free Ampere VM stays up. The 15-minute poll and the optional Actions job still record mail if a notification is dropped.
+## 1. Create the Gmail inbox
 
-## 1. Register the Entra app
+Use `scribe.smc@gmail.com`. Sign in to this account for the Cloud project, the sheet, Apps Script, and `scribe-login`. The Gmail API calls `/users/me`, so the signed-in account is the mailbox Scribe reads. Leave `MAILBOX_ADDRESS=scribe.smc@gmail.com`.
 
-1. Open [App registrations](https://entra.microsoft.com/) and choose **New registration**.
-2. Name it `Scribe`.
-3. Supported account types: **Personal Microsoft accounts only**.
-4. Redirect URI: **Public client/native (mobile & desktop)** and `https://login.microsoftonline.com/common/oauth2/nativeclient`.
-5. Register, then copy the **Application (client) ID**.
-6. Open **Authentication** and set **Allow public client flows** to **Yes**.
-7. Open **API permissions** → **Add a permission** → **Microsoft Graph** → **Delegated** and add `Mail.Read` and `Files.ReadWrite`.
-8. Do not create a client secret. Consent happens when you sign in.
+## 2. Google Cloud project, without billing
 
-`Mail.Read` cannot move or delete mail. Processed messages stay in the inbox. The workbook is the record of what was transcribed.
+1. Open [Google Cloud Console](https://console.cloud.google.com/) while signed in as `scribe.smc@gmail.com`.
+2. Create a project named `Scribe`. If a banner asks you to link a billing account, dismiss it. This project must stay on the free tier.
+3. **APIs & Services → Library**. Enable **Gmail API** and **Google Sheets API**. Do not enable Cloud Pub/Sub.
+4. **APIs & Services → OAuth consent screen**.
+   - User type: **External**.
+   - App name: `Scribe`. User support email and developer contact: `scribe.smc@gmail.com`.
+   - Scopes: add `https://www.googleapis.com/auth/gmail.modify` and `https://www.googleapis.com/auth/spreadsheets`.
+   - Save, then click **Publish app** so the status is **In production**.
+5. `gmail.modify` is a restricted scope, so Google shows an unverified-app warning. That warning is expected. On the consent screen choose **Advanced**, then **Go to Scribe**. An unverified production app can be granted by about 100 users, which covers this one mailbox, and the refresh token is not the 7-day Testing token. Do not submit the app for Google's restricted-scope verification. That review is for a public app and is not part of this free setup.
+6. **APIs & Services → Credentials → Create credentials → OAuth client ID**. Application type: **Desktop app**. Name it `Scribe login`.
+7. Copy the client id and client secret into `.env` as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. Desktop clients allow the loopback redirect `http://127.0.0.1:8765/` without registering it. Do not commit the secret.
 
-## 2. Create a Groq key
+If Google will not show the consent screen after you publish, switch the audience back to **Testing**, add `scribe.smc@gmail.com` as a test user, and run `scribe-login` again every 7 days. Production is the setup that keeps the refresh token.
+
+## 3. Create the sheet
+
+While signed in as `scribe.smc@gmail.com`, create a blank sheet at [sheets.google.com](https://sheets.google.com). Leave the first tab named `Sheet1`, or set `GOOGLE_SHEET_TAB` to a single word with no spaces. Copy the spreadsheet id from the URL:
+
+`https://docs.google.com/spreadsheets/d/<this-part>/edit`
+
+That value is `GOOGLE_SHEET_ID`. Scribe writes the header row on the first append.
+
+Columns:
+
+`message_id`, `received_time`, `sender`, `subject`, `attachment_name`, `duration_seconds`, `transcript`, `model`, `processed_at`
+
+## 4. Groq key
 
 Create a key at [console.groq.com/keys](https://console.groq.com/keys). The free tier for `whisper-large-v3-turbo` is 20 requests per minute, 2,000 requests per day, 7,200 seconds of audio per hour, and 25 MB per request. Keep the key in `.env` only.
 
-## 3. Configure the environment
+## 5. Configure the environment
 
 ```bash
 cp .env.example .env
-```
-
-Set these values:
-
-| Variable | Value |
-| --- | --- |
-| `MAILBOX_ADDRESS` | `smc.scribe@outlook.com` |
-| `MS_CLIENT_ID` | the Entra application id |
-| `GROQ_API_KEY` | the Groq key |
-| `GRAPH_CLIENT_STATE` | a random string, 16 to 128 characters |
-| `GRAPH_WEBHOOK_URL` | `https://<your-domain>/graph/notifications` |
-| `ONEDRIVE_XLSX_PATH` | `Scribe/voicemails.xlsx` |
-| `SCRIBE_DOMAIN` | the hostname only, such as `scribe.example.com` |
-
-`SCRIBE_DOMAIN` is for Caddy. The Python app does not read it.
-
-Generate a client state with:
-
-```bash
 openssl rand -hex 32
 ```
 
-## 4. Create the Oracle VM
+Leave `MAILBOX_ADDRESS=scribe.smc@gmail.com`. Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_SHEET_ID`, `GROQ_API_KEY`, and `WEBHOOK_SECRET` (the hex string, 16–128 characters). Set `SCRIBE_DOMAIN` to the hostname only, such as `scribe.example.com`. `GMAIL_LABEL` stays `scribe/processed`.
+
+## 6. Create the Oracle VM
 
 1. In the Oracle Cloud home region, create an Always Free Ampere instance: shape `VM.Standard.A1.Flex`, up to 2 OCPUs and 12 GB of memory, Ubuntu 22.04 or 24.04. If the console says **out of host capacity**, try another availability domain or try again later.
 2. Add ingress rules for TCP 80 and TCP 443 on the subnet security list.
-3. Oracle's Ubuntu image also filters those ports in iptables. On the VM, allow them and save the rules:
+3. Oracle's Ubuntu image also filters those ports in iptables. On the VM:
 
 ```bash
 sudo iptables -I INPUT -p tcp --dport 80 -j ACCEPT
@@ -75,75 +79,99 @@ sudo netfilter-persistent save
 4. Install Docker Engine and the Docker Compose plugin.
 5. Create a DNS A record for `SCRIBE_DOMAIN` pointing at the VM's public IP.
 
-An idle Always Free instance can be reclaimed if CPU, memory, and network stay under 20% for 7 days. A reclaim stops the VM; it does not delete the mailbox. The inbox still holds the audio, and the next poll writes any missing rows.
+An idle Always Free instance can be reclaimed if CPU, memory, and network stay under 20% for 7 days. A reclaim stops the VM. The Gmail inbox and the sheet stay, and the next poll writes any missing rows.
 
-If you cannot get Ampere capacity, skip the VM and use the [Actions poll](#8-optional-github-actions-backup) as the scheduler. Webhooks need the VM.
+## 7. Sign in as the Gmail account
 
-## 5. Sign in as the mailbox
-
-On the VM:
+On a laptop that has this repo and a browser:
 
 ```bash
-git clone <this-repo> scribe && cd scribe
-cp .env.example .env
-# edit .env with the values from step 3
-docker compose build
-docker compose run --rm -it scribe scribe-login
+uv sync --extra dev
+uv run scribe-login
 ```
 
-`scribe-login` prints a device-code URL. Open it and sign in as **`smc.scribe@outlook.com`**. Graph calls `/me`, so the signed-in account is the mailbox Scribe reads. The cache is stored at `/data/token_cache.json` on the Compose volume, mode `600`. The command does not print tokens.
+Open the printed URL and sign in as `scribe.smc@gmail.com`. Google redirects the browser to `http://127.0.0.1:8765/`. The command checks the Gmail profile matches `MAILBOX_ADDRESS` and writes `data/google_token.json` with mode `600`. It does not print the tokens. On the unverified-app screen, choose **Advanced → Go to Scribe**.
 
-## 6. Start the service
+Copy the token onto the VM volume:
 
 ```bash
+docker compose run --rm --entrypoint "" -v "$PWD/data:/import:ro" scribe \
+  sh -c "cp /import/google_token.json /data/google_token.json && chown app:app /data/google_token.json && chmod 600 /data/google_token.json"
+```
+
+To sign in on the VM instead, publish the login port and tunnel it:
+
+```bash
+# on the VM
+docker compose run --rm -p 8765:8765 -e SCRIBE_OAUTH_HOST=0.0.0.0 scribe scribe-login
+
+# on the laptop
+ssh -L 8765:127.0.0.1:8765 <user>@<vm>
+```
+
+Open the URL on the laptop. The redirect hits the tunnel, then the container.
+
+## 8. Start the service
+
+```bash
+docker compose build
 docker compose up -d
 curl https://scribe.example.com/health
 ```
 
-`/health` returns `{"status":"ok","mailbox":"smc.scribe@outlook.com"}`.
+`/health` returns `{"status":"ok","mailbox":"scribe.smc@gmail.com"}`.
 
-On startup the app creates a Graph subscription on `me/mailFolders('Inbox')/messages` and renews it daily (the lifetime is 6 days; Graph's maximum is under 7). Graph checks the webhook URL during creation, so DNS and Caddy must already be working. If they are not, the app retries every 5 minutes. A notification is answered with `202` before transcription starts. `validationToken` is echoed as `text/plain` with no other work.
+`POST /gmail/notifications` checks `X-Scribe-Signature` against the raw body and returns `202` before any Gmail or transcription work. A bad signature is `401`. Logs include message ids, models, and durations. They do not include transcripts, refresh tokens, or the webhook secret.
 
-Rows go to `Scribe/voicemails.xlsx` on the OneDrive of `smc.scribe@outlook.com`. Columns:
-
-`message_id`, `received_time`, `sender`, `subject`, `attachment_name`, `duration_seconds`, `transcript`, `model`, `processed_at`
-
-The same message id is written once. The workbook and a small SQLite file (`/data/scribe.db`) are both checked. A crash mid-transcription leaves the row pending and the next attempt retries it. After 5 failed attempts the row stays `failed` until you clear it. A message that still has no attachment list after 5 tries also stops; delete that row the same way.
+After five failed attempts the message is labeled `scribe/processed` so the script stops pinging it, and the SQLite row stays `failed`. To retry, remove that label in Gmail and clear the row:
 
 ```bash
 docker compose exec scribe python -c "import sqlite3; c=sqlite3.connect('/data/scribe.db'); c.execute(\"DELETE FROM messages WHERE status IN ('failed', 'pending')\"); c.commit()"
 ```
 
-Logs include message ids, models, and durations. They do not include transcripts, access tokens, or refresh tokens.
+If a sheet row was already written, delete that row too or Scribe will treat the message as done.
 
-## 7. Forward voicemail into the mailbox
+## 9. Install the Apps Script
 
-On the mailbox that receives the voicemail (often a campus account), create an Outlook on the web rule:
+On the Scribe Gmail account, follow [apps-script/README.md](apps-script/README.md).
 
-- Condition: the message has an attachment, or the subject contains the voicemail wording your phone system uses.
-- Action: **Redirect** to `smc.scribe@outlook.com`.
+- Paste `apps-script/Code.gs` and `apps-script/appsscript.json` into a new project.
+- Set script properties `WEBHOOK_URL=https://<domain>/gmail/notifications` and `WEBHOOK_SECRET` to the same secret as `.env`.
+- Run `scribePoll` once and approve access (read Gmail, manage triggers, external request).
+- Run `installTrigger` once. That creates a one-minute time trigger.
 
-Use redirect rather than forward. Redirect keeps the original sender and the audio attachment. A campus Microsoft 365 tenant often blocks redirect to an external address. If the rule saves but mail never arrives, the tenant blocked it. Ask campus IT to allow redirect to `smc.scribe@outlook.com`.
+The script only sends message ids. The VM downloads the audio.
 
-Send a test `.mp3` or `.wav` to `smc.scribe@outlook.com`. One new row should appear. Delivering the same message again must not add a second row.
+## 10. Forward voicemail into the inbox
 
-## 8. Optional GitHub Actions backup
+On the mailbox that receives the voicemail (campus Gmail, another Gmail, or the phone system's mailbox):
 
-The workflow `.github/workflows/reconcile.yml` runs the same poll on `workflow_dispatch` and hourly on UTC weekdays. Add these repository secrets:
+1. **Settings → See all settings → Forwarding and POP/IMAP → Add a forwarding address**.
+2. Enter the Scribe Gmail address (`scribe.smc@gmail.com`).
+3. Gmail sends a confirmation message to that inbox. Open the Scribe inbox, open the confirmation, and click the link. If the page shows a code, enter it back on the source account. Forwarding does not start until this verification is accepted.
+4. Create a filter on the source account: **Settings → Filters and Blocked Addresses → Create a new filter**. Criteria: has attachment, or the subject contains the voicemail wording your phone system uses. Action: **Forward it to** the Scribe Gmail. Leave a copy in the source inbox.
+5. A campus Google Workspace tenant often blocks forwarding to an external address. If adding the address fails, ask the admin to allow forwarding to the Scribe Gmail.
+
+Send a test `.mp3` or `.wav` to the Scribe inbox. Within about a minute the script posts the id, and one row appears in the sheet. The message gains the label `scribe/processed`. A second delivery of the same Gmail message must not add a second row.
+
+## Optional GitHub Actions backup
+
+`.github/workflows/reconcile.yml` runs the same poll on `workflow_dispatch` and hourly on UTC weekdays. The 15-minute poll on the VM is the one that matters while the VM is up. Add these repository secrets:
 
 | Secret | Value |
 | --- | --- |
-| `MS_CLIENT_ID` | the Entra application id |
+| `GOOGLE_CLIENT_ID` | the desktop client id |
+| `GOOGLE_CLIENT_SECRET` | the desktop client secret |
+| `GOOGLE_SHEET_ID` | the sheet id |
 | `GROQ_API_KEY` | the Groq key |
-| `TOKEN_CACHE_B64` | `base64 -w 0 /data/token_cache.json` from the VM |
+| `MAILBOX_ADDRESS` | `scribe.smc@gmail.com` |
+| `GOOGLE_TOKEN_B64` | `base64 -w 0 data/google_token.json` |
 
-Actions deduplicates with the workbook, because its SQLite file is discarded after each job. Local Whisper is disabled there. The job deletes the cache file at the end and does not upload it as an artifact.
+The job deletes the token file at the end and does not upload it. If it warns that the file changed, update `GOOGLE_TOKEN_B64`. Actions cannot write secrets by itself. Prefer the VM's copy while the VM is healthy.
 
-Microsoft rotates refresh tokens. If the job warns that the cache changed, update `TOKEN_CACHE_B64`. Actions cannot write secrets by itself. Running the VM and this schedule together can invalidate each other's refresh token. Prefer the VM while it is healthy, and use **Run workflow** when the VM is down. If sign-in breaks, run `scribe-login` again and replace the secret.
+## systemd instead of Compose
 
-## 9. systemd instead of Compose
-
-Install ffmpeg, Caddy, and uv on the host. Create a `scribe` user, put the repo at `/opt/scribe`, and keep `.env` there. `uv sync --extra local` installs the app, including the local Whisper fallback. Run `scribe-login` as that user so `data/token_cache.json` is mode `600`.
+Install ffmpeg, Caddy, and uv on the host. Create a `scribe` user, put the repo at `/opt/scribe`, and keep `.env` there. `uv sync --extra local` installs the app, including the local Whisper fallback. Run `scribe-login` as that user so `data/google_token.json` is mode `600`.
 
 ```bash
 sudo cp deploy/scribe.service /etc/systemd/system/scribe.service
@@ -163,8 +191,8 @@ uv run ruff check
 uv run ruff format
 ```
 
-`scribe-login` needs `MS_CLIENT_ID`. The server also needs `GROQ_API_KEY`, `GRAPH_WEBHOOK_URL`, and `GRAPH_CLIENT_STATE`. `uv run python -m app.poll` runs one reconciliation and exits, which is what Actions runs.
+`uv run python -m app.poll` runs one reconciliation and exits, which is what Actions runs.
 
-## Workbook and retries
+## Retries
 
-A message with no audio attachment is marked skipped and is not transcribed again. A message that claims attachments but lists none yet stays pending for a later poll. Groq errors fall back to local Whisper when `LOCAL_WHISPER_ENABLED=true` and the `local` extra is installed. Duration comes from ffprobe, then mutagen, then the wav header.
+A message with no audio attachment is labeled and marked skipped. A message whose audio bytes are not listed yet stays pending for a later poll and is not labeled. Groq errors fall back to local Whisper when `LOCAL_WHISPER_ENABLED=true` and the `local` extra is installed. Duration comes from ffprobe, then mutagen, then the wav header. Cells that start with `=`, `+`, `-`, or `@` are prefixed so the sheet stores them as text.

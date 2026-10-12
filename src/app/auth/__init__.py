@@ -1,1 +1,1 @@
-"""Microsoft identity helpers."""
+"""Google OAuth helpers."""

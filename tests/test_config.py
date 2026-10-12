@@ -1,52 +1,46 @@
 import pytest
 from pydantic import ValidationError
-from tests.helpers import settings_for
 
 from app.core.config import ConfigError, Settings, load_settings, require_server
+from tests.helpers import settings_for
 
 
-def test_default_mailbox_is_the_scribe_outlook_account(monkeypatch, tmp_path):
-    monkeypatch.delenv("MAILBOX_ADDRESS", raising=False)
-    settings = Settings(
-        MS_CLIENT_ID="client",
-        TOKEN_CACHE_PATH=tmp_path / "token.json",
-        STATE_DB_PATH=tmp_path / "scribe.db",
-    )
-    assert settings.MAILBOX_ADDRESS == "smc.scribe@outlook.com"
+def test_default_label_is_scribe_processed():
+    assert Settings.model_fields["GMAIL_LABEL"].default == "scribe/processed"
 
 
 def test_require_server_names_each_problem(tmp_path):
     settings = settings_for(
         tmp_path,
         GROQ_API_KEY="",
-        GRAPH_WEBHOOK_URL="http://localhost/hook",
-        GRAPH_CLIENT_STATE="short",
+        GOOGLE_CLIENT_SECRET="",
+        MAILBOX_ADDRESS="",
+        GOOGLE_SHEET_ID="",
+        WEBHOOK_SECRET="short",
     )
     with pytest.raises(ConfigError) as exc:
         require_server(settings)
     message = exc.value.code if isinstance(exc.value.code, str) else str(exc.value)
     assert "GROQ_API_KEY" in message
-    assert "GRAPH_WEBHOOK_URL" in message
-    assert "GRAPH_CLIENT_STATE" in message
+    assert "GOOGLE_CLIENT_SECRET" in message
+    assert "MAILBOX_ADDRESS" in message
+    assert "GOOGLE_SHEET_ID" in message
+    assert "WEBHOOK_SECRET" in message
 
 
 def test_load_settings_names_a_missing_client_id(monkeypatch):
-    monkeypatch.delenv("MS_CLIENT_ID", raising=False)
+    monkeypatch.delenv("GOOGLE_CLIENT_ID", raising=False)
     with pytest.raises(ConfigError) as exc:
         load_settings()
     message = exc.value.code if isinstance(exc.value.code, str) else str(exc.value)
-    assert "MS_CLIENT_ID" in message
+    assert "GOOGLE_CLIENT_ID" in message
 
 
-def test_workbook_path_rejects_traversal(tmp_path):
+def test_sheet_id_rejects_a_url(tmp_path):
     with pytest.raises(ValidationError):
-        settings_for(tmp_path, ONEDRIVE_XLSX_PATH="../secret.xlsx")
+        settings_for(tmp_path, GOOGLE_SHEET_ID="https://docs.google.com/spreadsheets")
 
 
-def test_authority_must_be_microsoft(tmp_path):
+def test_mailbox_must_look_like_an_email(tmp_path):
     with pytest.raises(ValidationError):
-        settings_for(tmp_path, MS_AUTHORITY="https://example.com/consumers")
-
-
-def test_settings_class_default_mailbox():
-    assert Settings.model_fields["MAILBOX_ADDRESS"].default == "smc.scribe@outlook.com"
+        settings_for(tmp_path, MAILBOX_ADDRESS="not-an-email")

@@ -2,7 +2,7 @@ import logging
 import re
 
 _TOKEN_PATTERN = re.compile(
-    r"(Bearer\s+)\S+|access_token|refresh_token|eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+",
+    r"(Bearer\s+)\S+|access_token|refresh_token|client_secret|ya29\.[A-Za-z0-9_\-]+",
     re.IGNORECASE,
 )
 
@@ -27,7 +27,7 @@ def configure_logging(level: str) -> None:
     _install_redaction(root)
     for handler in root.handlers:
         _install_redaction(handler)
-    for name in ("httpx", "httpcore", "msal"):
+    for name in ("httpx", "httpcore"):
         logging.getLogger(name).setLevel(logging.WARNING)
 
 
