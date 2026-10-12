@@ -1,0 +1,33 @@
+services:
+  scribe:
+    build: .
+    env_file: .env
+    environment:
+      TOKEN_CACHE_PATH: /data/token_cache.json
+      STATE_DB_PATH: /data/scribe.db
+      WHISPER_MODEL_DIR: /data/models
+    volumes:
+      - scribe-data:/data
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SCRIBE_DOMAIN: ${SCRIBE_DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - scribe
+    restart: unless-stopped
+
+volumes:
+  scribe-data:
+  caddy-data:
+  caddy-config:

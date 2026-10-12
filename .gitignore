@@ -133,3 +133,10 @@ cython_debug/
 .ruff_cache
 
 .idea
+
+# Scribe runtime state
+data/
+token_cache.json
+*.sqlite
+*.sqlite-journal
+*.db-journal

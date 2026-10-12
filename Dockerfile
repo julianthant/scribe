@@ -1,43 +1,32 @@
-# --------- Builder Stage ---------
-FROM ghcr.io/astral-sh/uv:python:3.12-slim AS builder
+FROM python:3.12-slim-bookworm
 
-# Set environment variables for uv
-ENV UV_COMPILE_BYTECODE=1
-ENV UV_LINK_MODE=copy
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT=/app/.venv \
+    PATH="/app/.venv/bin:$PATH" \
+    TOKEN_CACHE_PATH=/data/token_cache.json \
+    STATE_DB_PATH=/data/scribe.db \
+    WHISPER_MODEL_DIR=/data/models \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates ffmpeg libgomp1 util-linux \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 1000 app \
+    && useradd --uid 1000 --gid 1000 --create-home app \
+    && mkdir -p /data /app \
+    && chown app:app /data /app
+
+COPY --from=ghcr.io/astral-sh/uv:0.13.0 /uv /uvx /bin/
 
 WORKDIR /app
+COPY pyproject.toml uv.lock README.md ./
+COPY src ./src
+RUN uv sync --locked --extra local --no-editable
 
-# Install dependencies first (for better layer caching)
-RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --locked --no-install-project
+COPY deploy/entrypoint.sh /entrypoint.sh
+RUN chmod 755 /entrypoint.sh
 
-# Copy the project source code
-COPY . /app
-
-# Install the project in non-editable mode
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-editable
-
-# --------- Final Stage ---------
-FROM python:3.12-slim
-
-# Create a non-root user for security
-RUN groupadd --gid 1000 app \
-    && useradd --uid 1000 --gid app --shell /bin/bash --create-home app
-
-# Copy the virtual environment from the builder stage
-COPY --from=builder --chown=app:app /app/.venv /app/.venv
-
-# Ensure the virtual environment is in the PATH
-ENV PATH="/app/.venv/bin:$PATH"
-
-# Switch to the non-root user
-USER app
-
-# Set the working directory
-WORKDIR /code
-
-# Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+EXPOSE 8000
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
