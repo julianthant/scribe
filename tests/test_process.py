@@ -65,7 +65,7 @@ async def test_audio_is_appended_once_labeled_and_transcript_is_not_logged(
         return TRANSCRIPT, "whisper-large-v3-turbo"
 
     monkeypatch.setattr("app.pipeline.process.transcribe_file", fake_transcribe)
-    state = StateStore(tmp_path / "scribe.db")
+    state = StateStore()
     settings = settings_for(tmp_path)
     caplog.set_level(logging.INFO)
     lock = asyncio.Lock()
@@ -90,7 +90,7 @@ async def test_non_audio_is_labeled_and_skipped(tmp_path):
         "msg-2",
         [{"id": "pdf", "name": "notes.pdf", "mime": "application/pdf"}],
     )
-    state = StateStore(tmp_path / "scribe.db")
+    state = StateStore()
     result = await process_message(
         "msg-2",
         mail=mail,
@@ -107,7 +107,7 @@ async def test_non_audio_is_labeled_and_skipped(tmp_path):
 async def test_missing_attachment_bytes_stay_pending(tmp_path):
     mail = FakeMail()
     mail.messages["msg-3"] = _message("msg-3", [], pending=True)
-    state = StateStore(tmp_path / "scribe.db")
+    state = StateStore()
     result = await process_message(
         "msg-3",
         mail=mail,
@@ -121,7 +121,7 @@ async def test_missing_attachment_bytes_stay_pending(tmp_path):
 
 
 async def test_deleted_message_is_skipped(tmp_path):
-    state = StateStore(tmp_path / "scribe.db")
+    state = StateStore()
     mail = FakeMail()
     result = await process_message(
         "gone",
@@ -154,7 +154,7 @@ async def test_failures_stop_at_max_attempts_and_get_labeled(tmp_path, monkeypat
         return None
 
     monkeypatch.setattr("app.pipeline.process.asyncio.sleep", no_sleep)
-    state = StateStore(tmp_path / "scribe.db")
+    state = StateStore()
     settings = settings_for(tmp_path, MAX_ATTEMPTS=2)
     lock = asyncio.Lock()
     failed = await process_message("msg-4", mail=mail, state=state, settings=settings, lock=lock)

@@ -1,8 +1,10 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 
 import httpx
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 
 from app.auth.provider import AuthError, TokenProvider
@@ -20,7 +22,7 @@ def install_runtime(app: FastAPI, settings: Settings) -> None:
     app.state.queue = asyncio.Queue(maxsize=200)
     app.state.queued = set()
     app.state.process_lock = asyncio.Lock()
-    app.state.state_store = StateStore(settings.STATE_DB_PATH)
+    app.state.state_store = StateStore()
     app.state.http = None
     app.state.mail = None
 
@@ -48,17 +50,27 @@ async def lifespan(app: FastAPI):
     mail = GoogleClient(tokens, http, settings)
     app.state.http = http
     app.state.mail = mail
-    tasks = [
-        asyncio.create_task(_worker(app, mail), name="scribe-worker"),
-        asyncio.create_task(_reconcile_loop(app, mail), name="scribe-reconcile"),
-    ]
+    worker = asyncio.create_task(_worker(app, mail), name="scribe-worker")
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(
+        _reconcile_job,
+        "interval",
+        seconds=settings.RECONCILE_INTERVAL_SECONDS,
+        args=[app, mail],
+        next_run_time=datetime.now(UTC) + timedelta(seconds=15),
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=120,
+        id="scribe-reconcile",
+    )
+    scheduler.start()
     logger.info("scribe started for %s", settings.MAILBOX_ADDRESS)
     try:
         yield
     finally:
-        for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+        scheduler.shutdown(wait=False)
+        worker.cancel()
+        await asyncio.gather(worker, return_exceptions=True)
         await http.aclose()
 
 
@@ -80,15 +92,11 @@ async def _worker(app: FastAPI, mail: GoogleClient) -> None:
             app.state.queue.task_done()
 
 
-async def _reconcile_loop(app: FastAPI, mail: GoogleClient) -> None:
+async def _reconcile_job(app: FastAPI, mail: GoogleClient) -> None:
     settings: Settings = app.state.settings
-    while True:
-        try:
-            await reconcile(mail, app.state.state_store, settings, app.state.process_lock)
-        except asyncio.CancelledError:
-            raise
-        except AuthError:
-            logger.error("reconcile skipped; run scribe-login as %s", settings.MAILBOX_ADDRESS)
-        except Exception:
-            logger.exception("reconcile failed")
-        await asyncio.sleep(settings.RECONCILE_INTERVAL_SECONDS)
+    try:
+        await reconcile(mail, app.state.state_store, settings, app.state.process_lock)
+    except AuthError:
+        logger.error("reconcile skipped; run scribe-login as %s", settings.MAILBOX_ADDRESS)
+    except Exception:
+        logger.exception("reconcile failed")

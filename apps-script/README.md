@@ -1,8 +1,8 @@
 # Apps Script notifier
 
-This script runs inside the Gmail account that receives forwarded voicemail. Every minute it searches for `.mp3` and `.wav` messages that do not have the `scribe/processed` label, and POSTs each Gmail message id to the VM.
+This script runs inside the Gmail account that receives forwarded voicemail. Every minute it searches for `.mp3` and `.wav` messages that do not have the `scribe/processed` label, and POSTs each Gmail message id to the Heroku app.
 
-The VM fetches the audio with the Gmail API, transcribes it, appends a Google Sheet row, and applies the label. Until that label exists, the script will ping the same id again. The VM deduplicates those pings.
+The app fetches the audio with the Gmail API, transcribes it, appends a Google Sheet row, and applies the label. Until that label exists, the script will ping the same id again. The sheet `message_id` column is the durable dedup record.
 
 ## Install
 
@@ -13,8 +13,8 @@ The VM fetches the audio with the Gmail API, transcribes it, appends a Google Sh
 
 | Property | Value |
 | --- | --- |
-| `WEBHOOK_URL` | `https://<your-domain>/gmail/notifications` |
-| `WEBHOOK_SECRET` | the same `WEBHOOK_SECRET` as the VM `.env` |
+| `WEBHOOK_URL` | `https://<app>.herokuapp.com/gmail/notifications` |
+| `WEBHOOK_SECRET` | the same value as `heroku config:get WEBHOOK_SECRET` |
 
 5. Select `scribePoll` and **Run** once. Approve the consent screen (read Gmail, manage triggers, call an external URL).
 6. Select `installTrigger` and **Run** once. That creates a time-driven trigger every minute. You can also add it from the **Triggers** clock: function `scribePoll`, time-driven, minutes timer, every minute.

@@ -1,9 +1,9 @@
 /**
- * Posts new voicemail message ids to the Scribe VM.
+ * Posts new voicemail message ids to the Scribe Heroku app.
  *
  * Script properties:
- *   WEBHOOK_URL     https://<domain>/gmail/notifications
- *   WEBHOOK_SECRET  same value as WEBHOOK_SECRET on the VM
+ *   WEBHOOK_URL     https://<app>.herokuapp.com/gmail/notifications
+ *   WEBHOOK_SECRET  same value as heroku config:get WEBHOOK_SECRET
  *
  * Run installTrigger once, then run scribePoll once from the editor to grant consent.
  * The signature is HMAC-SHA256 hex of the raw JSON body, sent as X-Scribe-Signature.

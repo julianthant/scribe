@@ -9,6 +9,10 @@ def test_default_label_is_scribe_processed():
     assert Settings.model_fields["GMAIL_LABEL"].default == "scribe/processed"
 
 
+def test_local_whisper_is_off_by_default():
+    assert Settings.model_fields["LOCAL_WHISPER_ENABLED"].default is False
+
+
 def test_require_server_names_each_problem(tmp_path):
     settings = settings_for(
         tmp_path,
@@ -16,6 +20,7 @@ def test_require_server_names_each_problem(tmp_path):
         GOOGLE_CLIENT_SECRET="",
         MAILBOX_ADDRESS="",
         GOOGLE_SHEET_ID="",
+        GOOGLE_REFRESH_TOKEN="",
         WEBHOOK_SECRET="short",
     )
     with pytest.raises(ConfigError) as exc:
@@ -25,6 +30,7 @@ def test_require_server_names_each_problem(tmp_path):
     assert "GOOGLE_CLIENT_SECRET" in message
     assert "MAILBOX_ADDRESS" in message
     assert "GOOGLE_SHEET_ID" in message
+    assert "GOOGLE_REFRESH_TOKEN" in message
     assert "WEBHOOK_SECRET" in message
 
 

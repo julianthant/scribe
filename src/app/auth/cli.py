@@ -7,7 +7,6 @@ from urllib.parse import parse_qs, urlencode, urlparse
 import httpx
 
 from app.auth.scopes import SCOPES
-from app.auth.tokenstore import save_token
 from app.core.config import ConfigError, load_settings
 
 
@@ -31,18 +30,18 @@ def main() -> None:
     auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params)
     print(f"Open this URL and sign in as {settings.MAILBOX_ADDRESS}:")
     print(auth_url)
-    print(
-        "If this runs on the VM, forward "
-        f"127.0.0.1:{settings.SCRIBE_OAUTH_PORT} to the process before opening the URL."
-    )
+    print("This command runs on your laptop. The browser redirects to this machine.")
     code = _wait_for_code(settings.SCRIBE_OAUTH_HOST, settings.SCRIBE_OAUTH_PORT)
     token = _exchange(settings.GOOGLE_CLIENT_ID, settings.GOOGLE_CLIENT_SECRET, redirect, code)
     email = _profile(str(token["access_token"]))
     if email.casefold() != settings.MAILBOX_ADDRESS.casefold():
         print(f"Signed in as {email}. Expected {settings.MAILBOX_ADDRESS}.", file=sys.stderr)
         raise SystemExit(1)
-    save_token(settings.GOOGLE_TOKEN_PATH, token)
-    print(f"Signed in as {email}. Token saved to {settings.GOOGLE_TOKEN_PATH} (mode 600).")
+    refresh = str(token["refresh_token"])
+    print(f"Signed in as {email}.")
+    print("Do not commit this value or paste it into a log, ticket, or chat.")
+    print("Set it on the Heroku app, then discard this terminal scrollback:")
+    print(f"heroku config:set GOOGLE_REFRESH_TOKEN='{refresh}'")
 
 
 def _wait_for_code(host: str, port: int) -> str:

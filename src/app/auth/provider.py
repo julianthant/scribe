@@ -1,44 +1,57 @@
+import logging
 import threading
 import time
 
 import httpx
 
-from app.auth.tokenstore import AuthError, load_token, save_token
 from app.core.config import Settings
+
+logger = logging.getLogger(__name__)
+
+
+class AuthError(RuntimeError):
+    pass
 
 
 class TokenProvider:
-    """Refresh the installed-app token. A rotated refresh token replaces the saved one."""
+    """Refresh an access token in memory from GOOGLE_REFRESH_TOKEN.
+
+    The refresh token lives in the Heroku config var. A replacement issued by
+    Google is kept in this process only. The log names the action and never
+    the credential.
+    """
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._lock = threading.Lock()
+        self._refresh_token = settings.GOOGLE_REFRESH_TOKEN
+        self._access_token = ""
+        self._expires_at = 0.0
 
     def access_token(self, force: bool = False) -> str:
         with self._lock:
-            saved = load_token(self._settings.GOOGLE_TOKEN_PATH)
-            refresh = (saved or {}).get("refresh_token")
-            if not isinstance(refresh, str) or not refresh:
+            if not self._refresh_token:
                 raise AuthError(
                     "No signed-in account. Run scribe-login and sign in as "
                     f"{self._settings.MAILBOX_ADDRESS}."
                 )
-            access = (saved or {}).get("access_token")
-            expires_at = (saved or {}).get("expires_at") or 0
-            if (
-                not force
-                and isinstance(access, str)
-                and access
-                and isinstance(expires_at, int | float)
-                and time.time() < float(expires_at) - 60
-            ):
-                return access
-            refreshed = self._refresh(refresh)
-            save_token(self._settings.GOOGLE_TOKEN_PATH, refreshed)
+            if not force and self._access_token and time.time() < self._expires_at - 60:
+                return self._access_token
+            refreshed = self._refresh(self._refresh_token)
             token = refreshed["access_token"]
             if not isinstance(token, str) or not token:
                 raise AuthError("Google token response did not include a usable access token.")
-            return token
+            self._access_token = token
+            self._expires_at = float(refreshed["expires_at"])
+            rotated = refreshed["refresh_token"]
+            if isinstance(rotated, str) and rotated and rotated != self._refresh_token:
+                self._refresh_token = rotated
+                logger.warning(
+                    "Google issued a replacement credential. It stays in memory until "
+                    "this process restarts. Run scribe-login again, update the Heroku "
+                    "config var, and restart the dyno."
+                )
+            return self._access_token
 
     def _refresh(self, refresh_token: str) -> dict:
         try:

@@ -18,18 +18,17 @@ class Settings(BaseSettings):
 
     GOOGLE_CLIENT_ID: str = Field(min_length=1)
     GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REFRESH_TOKEN: str = ""
     MAILBOX_ADDRESS: str = ""
     WEBHOOK_SECRET: str = ""
     GOOGLE_SHEET_ID: str = ""
     GOOGLE_SHEET_TAB: str = "Sheet1"
     GMAIL_LABEL: str = "scribe/processed"
-    GOOGLE_TOKEN_PATH: Path = Path("data/google_token.json")
-    STATE_DB_PATH: Path = Path("data/scribe.db")
     SCRIBE_OAUTH_HOST: str = "127.0.0.1"
     SCRIBE_OAUTH_PORT: int = 8765
     GROQ_API_KEY: str = ""
     GROQ_MODEL: str = "whisper-large-v3-turbo"
-    LOCAL_WHISPER_ENABLED: bool = True
+    LOCAL_WHISPER_ENABLED: bool = False
     WHISPER_MODEL: str = "small"
     WHISPER_MODEL_DIR: Path = Path("data/models")
     RECONCILE_INTERVAL_SECONDS: int = 900
@@ -53,6 +52,11 @@ class Settings(BaseSettings):
         if cleaned and _SHEET_ID.fullmatch(cleaned) is None:
             raise ValueError("GOOGLE_SHEET_ID must be the id from the sheet URL")
         return cleaned
+
+    @field_validator("GOOGLE_REFRESH_TOKEN")
+    @classmethod
+    def refresh_token(cls, value: str) -> str:
+        return value.strip()
 
     @field_validator("GOOGLE_SHEET_TAB", "GMAIL_LABEL")
     @classmethod
@@ -109,6 +113,8 @@ def _runtime_problems(settings: Settings) -> list[str]:
         missing.append("GROQ_API_KEY is required")
     if not settings.GOOGLE_CLIENT_SECRET:
         missing.append("GOOGLE_CLIENT_SECRET is required")
+    if not settings.GOOGLE_REFRESH_TOKEN:
+        missing.append("GOOGLE_REFRESH_TOKEN is required")
     if not settings.MAILBOX_ADDRESS:
         missing.append("MAILBOX_ADDRESS is required")
     if not settings.GOOGLE_SHEET_ID:

@@ -1,4 +1,4 @@
-"""Run one inbox reconciliation. Used by hand and by the backup GitHub Actions workflow."""
+"""Run one inbox reconciliation. The web dyno also polls on a timer."""
 
 import asyncio
 import logging
@@ -19,7 +19,7 @@ async def run_once() -> int:
     settings = load_settings()
     require_runtime(settings)
     configure_logging(settings.LOG_LEVEL)
-    state = StateStore(settings.STATE_DB_PATH)
+    state = StateStore()
     async with httpx.AsyncClient(timeout=60) as http:
         mail = GoogleClient(TokenProvider(settings), http, settings)
         lock = asyncio.Lock()
