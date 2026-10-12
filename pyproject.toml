@@ -2,7 +2,6 @@
 name = "scribe"
 version = "0.3.0"
 description = "Transcribe Gmail voicemail attachments into a Google Sheet"
-authors = [{ name = "Igor Magalhaes", email = "igor.magalhaes.r@gmail.com" }]
 license = { text = "MIT" }
 readme = "README.md"
 requires-python = ">=3.11,<4"

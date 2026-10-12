@@ -94,14 +94,23 @@ celerybeat.pid
 # SageMath parsed files
 *.sage.py
 
-# Environments
+# Environments and secrets
 .env
+.env.*
+!.env.example
 .venv
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
+*.pem
+*.key
+*.p12
+client_secret*.json
+credentials.json
+*credentials*.json
+service-account*.json
 
 # Spyder project settings
 .spyderproject
@@ -134,10 +143,12 @@ cython_debug/
 
 .idea
 
-# Scribe runtime state
+# Scribe runtime state and local notes
 data/
 token_cache.json
 google_token.json
+token.json
+artifacts/
 *.sqlite
 *.sqlite-journal
 *.db-journal
