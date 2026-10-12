@@ -1,12 +1,27 @@
-# Scribe
+# 🎙️ Scribe
 
-Scribe turns a voicemail attachment into one row of a Google Sheet.
+**Scribe automatically transcribes forwarded voicemail into a Google Sheet, at no cost beyond hosting.**
 
-A phone system or another mailbox forwards the message to a free Gmail inbox. A Google Apps Script in that inbox notices new `.mp3` and `.wav` files and tells a small FastAPI service which Gmail message to read. The service downloads the audio, transcribes it, appends a row, and labels the message so it is not transcribed again.
+[![CI](https://github.com/julianthant/scribe/actions/workflows/ci.yml/badge.svg)](https://github.com/julianthant/scribe/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.md)
 
-The example inbox in this repository is `scribe.smc@gmail.com`. The service runs as one [Heroku](https://www.heroku.com/) Basic web dyno. Transcription uses Groq's free `whisper-large-v3-turbo` model. No Google Cloud billing account is required, and Gmail Pub/Sub is not used.
+## 🌟 Highlights
 
-## Architecture
+- **Forward and forget.** Outlook or any other mailbox forwards voicemail emails with `.mp3`/`.wav` attachments to a dedicated Gmail inbox, and a transcript row appears in a Google Sheet about a minute later.
+- **Webhook driven, no billing account.** A Google Apps Script polls every minute and sends an HMAC-signed webhook. Gmail Pub/Sub and Google Cloud billing are not needed.
+- **Free transcription.** It uses Groq `whisper-large-v3-turbo` on the free tier, with an optional local `faster-whisper` fallback.
+- **Idempotent.** The Sheet's `message_id` column deduplicates rows, a `scribe/processed` Gmail label marks finished messages, and a 15-minute in-app backup poll catches anything the webhook missed.
+- **Small and tested.** FastAPI on a single Heroku Basic dyno, with a pytest suite that mocks Gmail, Sheets, and Groq.
+
+## ℹ️ Overview
+
+Voicemail systems usually email audio files, and nobody wants to listen to them one by one. Scribe turns each attachment into one searchable spreadsheet row: sender, subject, duration, transcript, and model.
+
+Here's how it works. The voicemail mailbox forwards messages to a Gmail inbox owned by Scribe. An Apps Script in that inbox runs every minute and finds unprocessed audio messages. It POSTs only the Gmail message id to the FastAPI service's `/gmail/notifications`. The service fetches the audio through the Gmail API, transcribes it with Groq, appends a row to the Sheet, and labels the email `scribe/processed`.
+
+Built by [Julian (Hein Thant Zaw)](https://github.com/julianthant).
+
+## 🏗️ Architecture
 
 ```mermaid
 flowchart LR
@@ -30,7 +45,7 @@ flowchart LR
 
 The script sends only a message id. Audio stays in Gmail until the dyno downloads it. The sheet's `message_id` column is the record that survives a restart. The label `scribe/processed` is what stops the script from posting the same id again.
 
-## Design decisions
+## 🧠 Design decisions
 
 **Apps Script instead of Gmail Pub/Sub.** Push notifications through Pub/Sub require a Google Cloud billing account. A one-minute time trigger in the same Gmail account does not. The script searches for audio that is not labeled `scribe/processed` and POSTs `{message_id}` to `https://<app>.herokuapp.com/gmail/notifications`.
 
@@ -44,7 +59,7 @@ The script sends only a message id. Audio stays in Gmail until the dyno download
 
 **Groq first, local Whisper off.** Groq handles normal voicemail clips. `faster-whisper` is an optional extra and `LOCAL_WHISPER_ENABLED` defaults to false. A Basic dyno has 512 MB, and the Heroku build runs `uv sync --locked --no-default-groups`, so the extra is not installed there. Cells that start with `=`, `+`, `-`, or `@` are prefixed so Sheets stores them as text.
 
-## Tech stack
+## 🧰 Tech stack
 
 | Piece | Choice |
 | --- | --- |
@@ -56,23 +71,30 @@ The script sends only a message id. Audio stays in Gmail until the dyno download
 | Host | Heroku Basic web dyno, `Procfile` on `$PORT` |
 | Audio duration | mutagen, or the wav header; ffprobe when it is installed |
 
-## Setup
+## ✅ Prerequisites
 
-Sign in as `scribe.smc@gmail.com` for the Cloud project, the sheet, Apps Script, and `scribe-login`. The Gmail API calls `/users/me`, so that account is the mailbox Scribe reads.
+- Python 3.12 (`.python-version`; `pyproject.toml` allows >=3.11) and [uv](https://docs.astral.sh/uv/)
+- A dedicated Gmail account for the Scribe inbox
+- A free [Groq](https://console.groq.com/keys) API key
+- A [Heroku](https://www.heroku.com/) account and the Heroku CLI, for hosting
+
+## ⬇️ Setup and deployment
+
+Sign in as `<scribe-inbox>@gmail.com` for the Cloud project, the sheet, Apps Script, and `scribe-login`. The Gmail API calls `/users/me`, so that account is the mailbox Scribe reads.
 
 ### Google Cloud OAuth
 
-1. Open [Google Cloud Console](https://console.cloud.google.com/) as `scribe.smc@gmail.com` and create a project named `Scribe`. Dismiss any prompt to link a billing account.
+1. Open [Google Cloud Console](https://console.cloud.google.com/) as `<scribe-inbox>@gmail.com` and create a project named `Scribe`. Dismiss any prompt to link a billing account.
 2. Enable **Gmail API** and **Google Sheets API**. Do not enable Cloud Pub/Sub.
-3. On the OAuth consent screen, choose **External**. App name `Scribe`. Support email and developer contact: `scribe.smc@gmail.com`. Add the scopes `https://www.googleapis.com/auth/gmail.modify` and `https://www.googleapis.com/auth/spreadsheets`.
+3. On the OAuth consent screen, choose **External**. App name `Scribe`. Support email and developer contact: `<scribe-inbox>@gmail.com`. Add the scopes `https://www.googleapis.com/auth/gmail.modify` and `https://www.googleapis.com/auth/spreadsheets`.
 4. Publish the app so the status is **In production**. `gmail.modify` is a restricted scope, so Google shows an unverified-app warning. Choose **Advanced**, then **Go to Scribe**. An unverified production app can be granted by about 100 users, which covers this mailbox, and the refresh token is not the 7-day Testing token. Do not submit restricted-scope verification.
 5. Create an OAuth client of type **Desktop app**. Desktop clients accept the loopback redirect `http://127.0.0.1:8765/` without registering it.
 
-If Google will not show the consent screen after publishing, switch the audience back to **Testing**, add `scribe.smc@gmail.com` as a test user, and run `scribe-login` again every 7 days. Production is the setup that keeps the refresh token.
+If Google will not show the consent screen after publishing, switch the audience back to **Testing**, add `<scribe-inbox>@gmail.com` as a test user, and run `scribe-login` again every 7 days. Production is the setup that keeps the refresh token.
 
 ### Google Sheet
 
-Create a blank sheet at [sheets.google.com](https://sheets.google.com) while signed in as `scribe.smc@gmail.com`. Leave the first tab named `Sheet1`. The spreadsheet id is the URL segment after `/d/`:
+Create a blank sheet at [sheets.google.com](https://sheets.google.com) while signed in as `<scribe-inbox>@gmail.com`. Leave the first tab named `Sheet1`. The spreadsheet id is the URL segment after `/d/`:
 
 `https://docs.google.com/spreadsheets/d/<this-part>/edit`
 
@@ -95,7 +117,7 @@ heroku ps:resize web=basic
 heroku ps:scale web=1
 ```
 
-In the Heroku dashboard, open **Deploy**, choose **GitHub**, connect `julianthant/scribe`, and deploy this branch (or `main` after it merges). Keep a single web dyno. The `Procfile` is:
+In the Heroku dashboard, open **Deploy**, choose **GitHub**, connect your fork of this repository, and deploy `main`. Keep a single web dyno, and set `heroku config:set WEB_CONCURRENCY=1 --app <app>` so uvicorn runs one worker. Otherwise each worker starts its own backup scheduler and the poll can append duplicate rows. The `Procfile` is:
 
 ```
 web: uvicorn app.main:app --host 0.0.0.0 --port $PORT
@@ -103,18 +125,18 @@ web: uvicorn app.main:app --host 0.0.0.0 --port $PORT
 
 `.python-version` is `3.12`. Together with `pyproject.toml` and `uv.lock`, that selects the uv build. Optional extras, including `faster-whisper`, are not installed.
 
-On a laptop, put the client id, client secret, and `MAILBOX_ADDRESS=scribe.smc@gmail.com` in a local `.env` (copy `.env.example`). Then:
+On a laptop, put the client id, client secret, and `MAILBOX_ADDRESS=<scribe-inbox>@gmail.com` in a local `.env` (copy `.env.example`). Then:
 
 ```bash
 uv sync --extra dev
 uv run scribe-login
 ```
 
-Open the printed URL and sign in as `scribe.smc@gmail.com`. On the unverified-app screen, choose **Advanced → Go to Scribe**. The command checks the Gmail profile and prints one `heroku config:set` line for `GOOGLE_REFRESH_TOKEN`. Run it, then clear the terminal scrollback. Do not commit the value. The command does not write a token file.
+Open the printed URL and sign in as `<scribe-inbox>@gmail.com`. On the unverified-app screen, choose **Advanced → Go to Scribe**. The command checks the Gmail profile and prints one `heroku config:set` line for `GOOGLE_REFRESH_TOKEN`. Run it, then clear the terminal scrollback. Do not commit the value. The command does not write a token file.
 
 ```bash
 heroku config:set --app <app> \
-  MAILBOX_ADDRESS=scribe.smc@gmail.com \
+  MAILBOX_ADDRESS=<scribe-inbox>@gmail.com \
   GOOGLE_CLIENT_ID='<client id>' \
   GOOGLE_CLIENT_SECRET='<client secret>' \
   GOOGLE_SHEET_ID='<sheet id>' \
@@ -133,13 +155,13 @@ Deploy, then check the app:
 curl https://<app>.herokuapp.com/health
 ```
 
-The response is `{"status":"ok","mailbox":"scribe.smc@gmail.com"}`.
+The response is `{"status":"ok","mailbox":"<scribe-inbox>@gmail.com"}`.
 
 Access tokens stay in memory. If Google replaces the refresh token, the log says a replacement credential is held until restart and does not print it. Run `scribe-login` again, update `GOOGLE_REFRESH_TOKEN`, and restart the dyno.
 
 ### Apps Script
 
-Follow [apps-script/README.md](apps-script/README.md). Paste `apps-script/Code.gs` and `apps-script/appsscript.json` into a new project on `scribe.smc@gmail.com`.
+Follow [apps-script/README.md](apps-script/README.md). Paste `apps-script/Code.gs` and `apps-script/appsscript.json` into a new project on `<scribe-inbox>@gmail.com`.
 
 | Script property | Value |
 | --- | --- |
@@ -152,7 +174,7 @@ Run `scribePoll` once and approve access. Run `installTrigger` once. That create
 
 On the mailbox that receives the voicemail:
 
-1. Add a forwarding address for `scribe.smc@gmail.com`.
+1. Add a forwarding address for `<scribe-inbox>@gmail.com`.
 2. Open the confirmation message in the Scribe inbox and accept it. Forwarding does not start until that verification is done.
 3. Create a filter for the voicemail (attachment, or the subject your phone system uses) and forward it to the Scribe inbox. Leave a copy in the source mailbox.
 
@@ -160,13 +182,13 @@ A campus Google Workspace tenant often blocks forwarding to an external address.
 
 Send a test `.mp3` or `.wav` to the Scribe inbox. Within about a minute one row appears and the message gains `scribe/processed`. The same Gmail message must not add a second row.
 
-## Environment variables
+## ⚙️ Configuration
 
 Copy `.env.example` for local login. Heroku stores the same names as config vars. Empty secrets in the example file are intentional.
 
 | Variable | Required | Default | Purpose |
 | --- | --- | --- | --- |
-| `MAILBOX_ADDRESS` | yes | | Gmail inbox that receives the voicemail. Example: `scribe.smc@gmail.com` |
+| `MAILBOX_ADDRESS` | yes | | Gmail inbox that receives the voicemail. Example: `<scribe-inbox>@gmail.com` |
 | `GOOGLE_CLIENT_ID` | yes | | OAuth desktop client id |
 | `GOOGLE_CLIENT_SECRET` | yes | | OAuth desktop client secret |
 | `GOOGLE_REFRESH_TOKEN` | yes, at runtime | | Printed by `scribe-login`. Not written to disk |
@@ -186,10 +208,11 @@ Copy `.env.example` for local login. Heroku stores the same names as config vars
 | `MAX_ATTEMPTS` | | `5` | Failures before the message is labeled and left alone |
 | `RETRY_BACKOFF_SECONDS` | | `2` | First retry delay. Later delays double, up to 60 seconds |
 | `LOG_LEVEL` | | `INFO` | Python log level |
+| `WEB_CONCURRENCY` | recommended on Heroku | | Read by uvicorn, not by Scribe's settings. Set it to `1` so there is a single worker and a single backup scheduler |
 
 Logs include message ids, models, and durations. They do not include transcripts, refresh tokens, or the webhook secret.
 
-## Testing
+## 🧪 Testing
 
 ```bash
 uv sync --extra dev
@@ -208,16 +231,36 @@ To try local Whisper on a laptop, install the extra and turn it on. That extra i
 uv sync --extra dev --extra local
 ```
 
-## Limitations
+## 📁 Project structure
+
+```
+apps-script/        Apps Script notifier (Code.gs, appsscript.json, install guide)
+src/app/api/        HMAC-verified webhook route (/gmail/notifications)
+src/app/auth/       OAuth scopes, token provider, scribe-login CLI
+src/app/core/       Settings (env vars) and logging
+src/app/google/     Gmail and Sheets API client and message parsing
+src/app/pipeline/   Audio handling, transcription, sheet writes, reconcile, retry state
+src/app/services/   Background worker and APScheduler backup poll
+src/app/main.py     FastAPI app and /health
+src/app/poll.py     One-shot reconcile (scribe-poll)
+tests/              pytest suite
+Procfile, app.json  Heroku config
+```
+
+## ⚠️ Limitations
 
 - A Basic dyno is paid (about $7 per month at the cap). Student Pack credit pays it only while the credit lasts. The dyno must stay up for the webhook to succeed.
 - Attempt counts disappear on restart. A message that failed four times starts again at one after a deploy, unless it was already labeled or already has a sheet row.
 - Clips larger than 24 MB need ffmpeg to be split for Groq. The Heroku slug does not include ffmpeg. Voicemail clips are smaller than that.
 - The unverified Gmail scope shows a consent warning and is capped at about 100 users. This app is for one mailbox.
-- The sheet append is not locked across processes. Scale the web formation to 1.
+- The sheet append is not locked across processes. Scale the web formation to 1 and set `WEB_CONCURRENCY=1`.
 - If Google replaces the refresh token, the new value lives only until the dyno restarts. Update the config var by hand.
 - The backup poll and the script can both see a message before the label exists. The sheet check makes the second pass a no-op when the first pass finished the row.
 
-## License
+## 💭 Contributing
+
+Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## 📄 License
 
 MIT. See [LICENSE.md](LICENSE.md).

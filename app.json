@@ -17,7 +17,7 @@
   "env": {
     "MAILBOX_ADDRESS": {
       "description": "Gmail inbox that receives forwarded voicemail.",
-      "value": "scribe.smc@gmail.com"
+      "value": "scribe-inbox@example.com"
     },
     "GOOGLE_CLIENT_ID": {
       "description": "OAuth desktop client id from the Cloud project.",

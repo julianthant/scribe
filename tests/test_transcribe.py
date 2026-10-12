@@ -3,9 +3,9 @@ from pathlib import Path
 
 import httpx
 import pytest
-from tests.helpers import settings_for, wav_bytes
 
 from app.pipeline.transcribe import TranscriptionError, transcribe_file
+from tests.helpers import settings_for, wav_bytes
 
 
 def _wav(tmp_path: Path) -> Path:
